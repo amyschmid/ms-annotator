@@ -1,7 +1,0 @@
-# General configuration file for ms-annotator
-# NOTE paths relative to root directory of project
-ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt
-
-# Place to save annotated data
-data_dir: data
-

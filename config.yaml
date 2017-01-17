@@ -1,0 +1,14 @@
+# General configuration file for ms-annotator
+# NOTE: paths relative to root directory of project
+
+# Location to read in input taxon ids
+taxon_file: taxon_query.csv
+
+# Known assemblies table
+know_assemblies: known_asseblies.csv
+
+# Place to save annotated data
+data_dir: data
+
+# Location of assembly_summary.txt
+ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt
