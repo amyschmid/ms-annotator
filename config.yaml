@@ -4,11 +4,12 @@
 # Location to read in input taxon ids
 taxon_file: taxon_query.csv
 
-# Known assemblies table
-know_assemblies: known_asseblies.csv
-
 # Place to save annotated data
 data_dir: data
+#
+# Known assemblies table
+known_assemblies: data/known_asseblies.csv
 
-# Location of assembly_summary.txt
+# NCBI assemblies, will be saved in data_dir
 ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt
+

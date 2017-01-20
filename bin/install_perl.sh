@@ -5,16 +5,14 @@
 set -eo pipefail
 
 # Root directory to find external libraries
-incdir="../resources/include"
-
+incdir="../include"
 
 # External libaries to append to PERL5LIB
 external_libs=(
 	$incdir/ProbModelSEED/lib
 	$incdir/Workspace/lib
 	$incdir/KBaseClient/lib
-	$incdir/SEED-API/lib
-	$incdir/MSSeedSupportServer/lib)
+  $incdir/SEED-API/lib)
 
 # Requested location of venv
 venv_dir="../venv"

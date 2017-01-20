@@ -1,17 +1,21 @@
 package MSAnnotator::Main;
-require Exporter;
 
 # Load custom modules
 use MSAnnotator::Base;
 use MSAnnotator::Config;
+use MSAnnotator::NCBI 'get_assembly_summary';
 
 # Export functions
+require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT = qw(main);
+our @EXPORT_OK = qw(main);
 
 sub main {
   my $config = load_config();
-  say Dumper $config;
+
+  # Get all associated taxon ids
+  get_assembly_summary($config);
+
   #my $known_assemblies = load_known_assemblies();
   #my $ncbi_assemblies = load_ncbi_assemblies();
   # ...
