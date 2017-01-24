@@ -1,17 +1,17 @@
 package MSAnnotator::NCBI;
 use Text::CSV_XS;
-use Digest::MD5::File 'file_md5_hex';
 use List::MoreUtils 'uniq';
 use Clone 'clone';
+use Parallel::ForkManager;
 
 # Load custom modukes
 use MSAnnotator::Base;
-use MSAnnotator::Util 'download_url';
+use MSAnnotator::Util 'download_check';
 
 # Export functions
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(get_assemblies);
+our @EXPORT_OK = qw(get_assemblies download_assemblies);
 
 # Header in expected order
 use constant ASSEMBLY_HEADER => (
@@ -41,22 +41,8 @@ sub get_assembly_summary {
   # Check if summary file exits
   # Download if needed, otherwise check md5
   my ($filename, $url) = @_;
-
-  if (! -e $filename) {
-    download_url($url, $filename);
-    chmod 0440, $filename;
-  } else {
-    my $filename_new = "$filename.new";
-    download_url($url, $filename_new);
-    if (file_md5_hex($filename) ne file_md5_hex($filename_new)) {
-      croak 
-        "Error: Version of assembly_summary has changed on NCBI, ",
-        "version tracking is currently unimplimented\n",
-        "New version of file can be found here: $filename_new\n";
-    } else {
-      unlink $filename_new;
-    }
-  }
+  download_check($url, $filename);
+  chmod 0440, $filename;
 }
 
 sub load_ncbi_assemblies {
@@ -125,6 +111,37 @@ sub get_assemblies {
     }
   }
   return \%assemblies_keep;
+}
+
+sub download_assembly {
+  # Download assembly from NCBI
+  # See 
+  my ($asmid, $baseurl, $data_dir) = @_;
+  my $download_path = $data_dir . "/" . $asmid;
+  my @filetypes = (
+    "_assembly_report.txt",
+    "_assembly_stats.txt",
+    "_genomic.gbff.gz");
+
+  mkdir $download_path if ! -e $download_path;
+  for my $ft (@filetypes) {
+    my $filename = $download_path . "/" . $asmid . $ft;
+    my $url = $baseurl . "/" . $asmid . $ft;
+    download_check($url, $filename);
+  }
+}
+
+sub download_assemblies {
+  my ($config, $assemblies) = @_;
+  my $pm = new Parallel::ForkManager(10);
+  for my $asmid (keys %{$assemblies}) {
+    $pm->start and next;
+    download_assembly(
+      $asmid,
+      $assemblies->{$asmid}->{ftp_path},
+      $config->{data_dir});
+    $pm->finish;
+  }
 }
 
 1;

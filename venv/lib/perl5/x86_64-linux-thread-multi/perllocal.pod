@@ -3100,3 +3100,25 @@ C<EXE_FILES: >
 
 =back
 
+=head2 Tue Jan 24 13:32:18 2017: C<Module> L<Parallel::ForkManager|Parallel::ForkManager>
+
+=over 4
+
+=item *
+
+C<installed into: /home/jp102/schmidlab/pipeline/venv/lib/perl5>
+
+=item *
+
+C<LINKTYPE: dynamic>
+
+=item *
+
+C<VERSION: 1.19>
+
+=item *
+
+C<EXE_FILES: >
+
+=back
+
