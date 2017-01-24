@@ -19,7 +19,7 @@ sub load_config {
   # Convert paths
   my $pwd = ${ENV{'PWD'}};
   my $assmblfn = (split('/', $config->{ncbi_assemblies_url}))[-1];
-  $config->{taxon_file} = "$pwd/$config->{taxon_file}";
+  $config->{taxid_file} = "$pwd/$config->{taxid_file}";
   $config->{data_dir} = "$pwd/$config->{data_dir}";
   $config->{known_assemblies} = "$pwd/$config->{known_assemblies}";
   $config->{ncbi_assemblies_file} = "$config->{data_dir}/$assmblfn";
@@ -31,17 +31,19 @@ sub load_config {
 
   # Load annotate_file and add to config hash
   my $csv = Text::CSV->new({binary => 1, auto_diag => 1});
-  open my $fh, "<", $config->{taxon_file} or croak "$!: $config->{taxon_file}\n";
+  open my $fh, "<", $config->{taxid_file} or croak "$!: $config->{taxid_file}\n";
 
   # Ensure header exists
   my @header = map { lc $_ } @{$csv->getline($fh)};
-  croak "No taxon_id feild in annotate_file\n" if not 'taxon_id' ~~ @header;
+  croak "Error: No taxid field in annotate_file\n" if not 'taxid' ~~ @header;
 
   # Loop through and push ids to config
   $csv->column_names(@header);
   while (my $row = $csv->getline_hr($fh)) {
-    push @{$config->{taxon_input}}, $row->{taxon_id};
+    push @{$config->{taxid_input}}, $row->{taxid};
   }
+
+  close $fh;
   return $config;
 }
 

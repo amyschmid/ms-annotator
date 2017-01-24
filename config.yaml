@@ -2,12 +2,12 @@
 # NOTE: paths relative to root directory of project
 
 # Location to read in input taxon ids
-taxon_file: taxon_query.csv
+taxid_file: taxid_query.csv
 
-# Place to save annotated data
+# Place to save data
 data_dir: data
 #
-# Known assemblies table
+# Known assemblies and RAST ids
 known_assemblies: data/known_asseblies.csv
 
 # NCBI assemblies, will be saved in data_dir
