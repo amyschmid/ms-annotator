@@ -77,6 +77,7 @@ sub load_ncbi_assemblies {
     my $key = (split('/', $row->{ftp_path}))[-1];
     croak "Error: Duplicate assembly ids found\n" if exists $ret{$key};
     $ret{$key} = clone $row;
+    $ret{$key}{assembly} = $key;
   }
   close $fh;
   return \%ret;

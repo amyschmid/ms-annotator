@@ -4,7 +4,7 @@ package MSAnnotator::Main;
 use MSAnnotator::Base;
 use MSAnnotator::Config;
 use MSAnnotator::NCBI qw(get_assemblies download_assemblies);
-use MSAnnotator::KnownAssemblies;
+use MSAnnotator::KnownAssemblies 'insert_rast_jobid';
 
 # Export functions
 require Exporter;
@@ -12,9 +12,12 @@ our @ISA = 'Exporter';
 our @EXPORT_OK = qw(main);
 
 sub main {
-  #my $config = load_config();
-  #my $assemblies = get_assemblies($config);
+  my $config = load_config();
+  my $assemblies = get_assemblies($config);
   #download_assemblies($config, $assemblies);
+  
+  # Test insert_rast_jobid
+  insert_rast_jobid("123123", $assemblies->{'GCA_000016605.1_ASM1660v1'});
 
   ## Do SEED things...
   ## Load known_assemblies and check for existing data 
