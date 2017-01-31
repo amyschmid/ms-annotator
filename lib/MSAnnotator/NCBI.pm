@@ -1,8 +1,9 @@
 package MSAnnotator::NCBI;
 use Text::CSV_XS;
-use List::MoreUtils 'uniq';
-use Clone 'clone';
 use Parallel::ForkManager;
+use List::MoreUtils 'uniq';
+use File::Path 'make_path';
+use Clone 'clone';
 
 # Load custom modukes
 use MSAnnotator::Base;
@@ -115,19 +116,21 @@ sub get_assemblies {
 
 sub download_assembly {
   # Download assembly from NCBI
-  # See 
+  # Available filetypes:
+  #   
   my ($asmid, $baseurl, $data_dir) = @_;
-  my $download_path = $data_dir . "/" . $asmid;
   my @filetypes = (
     "_assembly_report.txt",
     "_assembly_stats.txt",
     "_genomic.gbff.gz");
 
-  mkdir $download_path if ! -e $download_path;
+  my $download_path = $data_dir . "/" . $asmid . "/NCBI";
+  make_path($download_path) || croak "Error: Could not create: $download_path";
   for my $ft (@filetypes) {
     my $filename = $download_path . "/" . $asmid . $ft;
     my $url = $baseurl . "/" . $asmid . $ft;
     download_check($url, $filename);
+    chmod 0440, $filename;
   }
 }
 
