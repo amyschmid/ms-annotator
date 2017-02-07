@@ -8,7 +8,7 @@ taxid_file: taxid_query.csv
 data_dir: data
 #
 # Known assemblies and RAST ids
-known_assemblies: data/known_asseblies.csv
+known_assemblies: data/known_assemblies.csv
 
 # NCBI assemblies, will be saved in data_dir
 ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt

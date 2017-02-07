@@ -10,7 +10,7 @@ use MSAnnotator::Config;
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(update_known);
+our @EXPORT_OK = qw(update_known get_known);
 
 # Order does not matter
 # Any all columns can be added or removed except:
@@ -47,14 +47,12 @@ my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
   csv_quote_char => undef,
   csv_escape_char => undef});
 
-# Create file if it does not exist
+# Create file if it does not exist and ensure file is write protected
 if (! -e $known_filename) {
   my $colstr = join(" CHAR(0), ", @column_header) . " CHAR(0)";
   $dbh->do("CREATE TABLE $known_table ($colstr)");
+  chmod 0440, $known_filename;
 }
-
-# Ensure known file is write protected
-chmod 0440, $known_filename;
 
 # Insert statement
 my $insert_sth = $dbh->prepare(
@@ -66,13 +64,13 @@ my $update_sth = $dbh->prepare(
   "UPDATE $known_table SET " . join(" = ?, ", @column_header) . " = ? " .
   "WHERE rast_jobid = ?");
 
-# Check rast_jobid as it serves as a unique key
-my $check_rastjob = $dbh->prepare(
+# Fetch via rast_jobid
+my $query_rastjob_sth= $dbh->prepare(
   "SELECT * FROM $known_table WHERE rast_jobid = ?");
 
-# Check rast_jobid as it serves as a unique key
-my $check_msid= $dbh->prepare(
-  "SELECT * FROM $known_table WHERE model_seed_id = ?");
+# Fetch via assembly
+my $query_assembly_sth= $dbh->prepare(
+  "SELECT * FROM $known_table WHERE assembly = ?");
 
 sub do_insert_known {
   my ($vals) = @_;
@@ -91,19 +89,19 @@ sub do_update_known {
 }
 
 sub update_known {
-  # Input known jobid, and hash of values to be added
+  # Input a rast_jobid, and hash of values to be added
+  # Adds new row if rast_jobid does not exit, otherwise updates current row
   my ($id, $vals) = @_;
-  $check_rastjob->execute($id);
+  $query_rastjob_sth->execute($id);
 
   # Ensure rast_jobid is unique
-  my $nrows = $check_rastjob->rows;
-  say "jobid query: $nrows";
+  my $nrows = $query_rastjob_sth->rows;
 
   # Add to file no rows are retured otherwise, get current row and update
   if ($nrows == 0) {
     do_insert_known({rast_jobid => $id, %{$vals}});
   } elsif ($nrows == 1) {
-    my %res = %{$check_rastjob->fetchrow_hashref};
+    my %res = %{$query_rastjob_sth->fetchrow_hashref};
     for (keys %{$vals}) {
       $res{$_} = $vals->{$_} if $_ ~~ @column_header;
     }
@@ -111,6 +109,32 @@ sub update_known {
   } else {
     carp "Error: Multiple entries for jobid: $id" if $nrows > 1;
   }
+  $query_rastjob_sth->finish;
 }
 
- 1; 
+sub get_known {
+  # Returns a hash of hashes keyed by assembly
+  # Each sub-hash is keyed by rast_jobid and contains pairs:
+  my @asmids = @_;
+  my @task_list = qw(
+    rast_id rast_taxid rast_result modelseed_id modelseed_result);
+
+  my %ret;
+  for my $asmid (@asmids) {
+    $query_assembly_sth->execute($asmid);
+    if ($query_assembly_sth->rows == 0) {
+      $ret{$asmid} = ();
+    } else {
+      my %ids;
+      while (my $res = $query_assembly_sth->fetchrow_hashref) {
+        $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @task_list };
+        print Dumper \%ids;
+      }
+      $ret{$asmid} = { %ids };
+      print Dumper \%ret;
+    }
+  }
+  return \%ret;
+}
+
+1; 
