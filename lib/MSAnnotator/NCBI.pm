@@ -7,7 +7,7 @@ use Clone 'clone';
 
 # Load custom modukes
 use MSAnnotator::Base;
-use MSAnnotator::Util 'download_check';
+use MSAnnotator::Util qw(download_url download_check);
 
 # Export functions
 require Exporter;
@@ -42,7 +42,7 @@ sub get_assembly_summary {
   # Check if summary file exits
   # Download if needed, otherwise check md5
   my ($filename, $url) = @_;
-  download_check($url, $filename);
+  download_url($url, $filename);
   chmod 0440, $filename;
 }
 

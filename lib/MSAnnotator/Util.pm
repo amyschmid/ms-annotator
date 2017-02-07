@@ -9,7 +9,7 @@ use MSAnnotator::Base
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(download_check);
+our @EXPORT_OK = qw(download_check download_url);
 
 sub download_url {
   # Downloads remote file, otherwise prints error
