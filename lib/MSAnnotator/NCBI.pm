@@ -131,7 +131,7 @@ sub download_assembly {
   if ( -e $download_path) {
     chmod 0750, $download_path;
   } else {
-    make_path($download_path) || 
+    make_path($download_path) or
       croak "Error: Could not create: $download_path";
   }
 
@@ -153,7 +153,7 @@ sub download_assemblies {
     download_assembly(
       $asmid,
       $assemblies->{$asmid}->{ftp_path},
-      $assemblies->{$asmid}->{local_path});
+      $assemblies->{$asmid}->{local_path} . "/NCBI");
     $pm->finish;
   }
   return $assemblies;

@@ -117,7 +117,8 @@ sub get_known {
   # Each sub-hash is keyed by rast_jobid and contains pairs:
   my @asmids = @_;
   my @task_list = qw(
-    rast_id rast_taxid rast_result modelseed_id modelseed_result);
+    rast_id rast_taxid rast_result 
+    modelseed_id modelseed_result);
 
   my %ret;
   for my $asmid (@asmids) {
@@ -128,10 +129,8 @@ sub get_known {
       my %ids;
       while (my $res = $query_assembly_sth->fetchrow_hashref) {
         $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @task_list };
-        print Dumper \%ids;
       }
       $ret{$asmid} = { %ids };
-      print Dumper \%ret;
     }
   }
   return \%ret;
