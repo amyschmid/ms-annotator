@@ -105,34 +105,44 @@ sub get_assemblies {
     }
   }
 
-  my %assemblies_keep;
+  # Retain assemblies to keep and add local_path
+  my %keep;
   my @taxid_keep = keys %taxid_species;
   for my $asm_key (keys %{$assemblies}) {
     if ($assemblies->{$asm_key}->{species_taxid} ~~ @taxid_keep) {
-      $assemblies_keep{$asm_key} = clone $assemblies->{$asm_key};
+      $keep{$asm_key} = clone $assemblies->{$asm_key};
+      $keep{$asm_key}{local_path} = $config->{data_dir} . '/' . $asm_key;
     }
   }
-  return \%assemblies_keep;
+  return \%keep;
 }
 
 sub download_assembly {
   # Download assembly from NCBI
   # Available filetypes:
   #   
-  my ($asmid, $baseurl, $data_dir) = @_;
+  my ($asmid, $baseurl, $download_path) = @_;
   my @filetypes = (
     "_assembly_report.txt",
     "_assembly_stats.txt",
     "_genomic.gbff.gz");
 
-  my $download_path = $data_dir . "/" . $asmid . "/NCBI";
-  make_path($download_path) || croak "Error: Could not create: $download_path";
+  # Ensure path exists and is writable
+  if ( -e $download_path) {
+    chmod 0750, $download_path;
+  } else {
+    make_path($download_path) || 
+      croak "Error: Could not create: $download_path";
+  }
+
+  # Loop through filetypes, download, and check md5
   for my $ft (@filetypes) {
     my $filename = $download_path . "/" . $asmid . $ft;
     my $url = $baseurl . "/" . $asmid . $ft;
     download_check($url, $filename);
     chmod 0440, $filename;
   }
+  chmod 0550, $download_path;
 }
 
 sub download_assemblies {
@@ -143,9 +153,10 @@ sub download_assemblies {
     download_assembly(
       $asmid,
       $assemblies->{$asmid}->{ftp_path},
-      $config->{data_dir});
+      $assemblies->{$asmid}->{local_path});
     $pm->finish;
   }
+  return $assemblies;
 }
 
 1;
