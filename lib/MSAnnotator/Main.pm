@@ -5,7 +5,7 @@ use MSAnnotator::Base;
 use MSAnnotator::Config;
 use MSAnnotator::NCBI qw(get_assemblies download_assemblies);
 use MSAnnotator::KnownAssemblies qw(update_known get_known);
-use MSAnnotator::RAST 'prepare_genbankfile';
+use MSAnnotator::RAST 'submit_rast';
 
 # Export functions
 require Exporter;
@@ -15,8 +15,10 @@ our @EXPORT_OK = qw(main);
 sub main {
   my $config = load_config();
   my $assemblies = get_assemblies($config);
+  download_assemblies($config, $assemblies);
+
   my @asmids = keys %{$assemblies};
-  #download_assemblies($config, $assemblies);
+  submit_rast(\@asmids, $assemblies);
 
   # Do SEED things...
   # Determine tasks
