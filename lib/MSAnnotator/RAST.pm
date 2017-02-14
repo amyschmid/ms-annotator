@@ -11,7 +11,7 @@ use MSAnnotator::Base
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(submit_rast);
+our @EXPORT_OK = qw(rast_submit rast_complete);
 
 # Constants
 use constant genbank_suffix => "_genomic.gbff";
@@ -21,6 +21,7 @@ my ($user, $password) = @{LoadFile("credentials.yaml")}{qw(user password)};
 
 
 sub prepare_genbankfile {
+  # Extracts genbank file from gzip archive
   my ($asmids, $assemblies) = @_;
   my $pm = new Parallel::ForkManager(10);
   for my $asmid (@{$asmids}) {
@@ -39,7 +40,7 @@ sub prepare_genbankfile {
   }
 }
 
-sub submit_rast {
+sub rast_submit {
   # Options from RASTserver:
   #  -file -filetype -taxonomyID -domain -organismName
   #  -keepGeneCalls -geneticCode -geneCaller
@@ -83,9 +84,34 @@ sub submit_rast {
       update_known($ret->{job_id}, $asm);
     } else {
       say Dumper $ret;
-      say "Unknown status from RAST: $ret->{status}";
+      croak "Unknown status from RAST: $ret->{status}\n";
     }
   }
+}
+
+sub rast_complete {
+  # Takes array of jobids and returns jobids that are complete
+  my $jobids = shift;
+  my @ret;
+
+  # Make connection and coak if not OK
+  my $rast_client = RASTserver->new($user, $password);
+  my $stat = $rast_client->status_of_RAST_job({-job => $jobids});
+  for my $jobid (@{$jobids}) {
+    if ($stat->{$jobid}->{status} eq "error") {
+      my $err = "Error: RAST error while checking status for job: $jobid\n";
+      if ($stat->{$jobid}->{'error_msg'}) {
+        $err = $err . "  RAST error message: $stat->{$jobid}->{'error_msg'}\n";
+      }
+      croak "$err";
+    } elsif ($stat->{$jobid}->{status} eq "complete") {
+      push @ret, $jobid;
+    } else {
+      say Dumper $stat->{$jobid};
+      croak "Unknown status from RAST: $stat->{$jobid}->{status}\n";
+    }
+  }
+  return \@ret;
 }
 
 1;

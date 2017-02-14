@@ -10,7 +10,7 @@ use MSAnnotator::Config;
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(update_known get_known);
+our @EXPORT_OK = qw(update_known get_tasks);
 
 # Order does not matter
 # Any all columns can be added or removed except:
@@ -117,20 +117,58 @@ sub get_known {
   # Each sub-hash is keyed by rast_jobid and contains pairs:
   my @asmids = @_;
   my @task_list = qw(
-    rast_id rast_taxid rast_result 
+    rast_jobid rast_taxid rast_result 
     modelseed_id modelseed_result);
 
   my %ret;
   for my $asmid (@asmids) {
     $query_assembly_sth->execute($asmid);
     if ($query_assembly_sth->rows == 0) {
-      $ret{$asmid} = ();
+      $ret{$asmid} = undef;
     } else {
       my %ids;
       while (my $res = $query_assembly_sth->fetchrow_hashref) {
         $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @task_list };
       }
       $ret{$asmid} = { %ids };
+    }
+  }
+  return \%ret;
+}
+
+sub get_tasks {
+  # Returns a hash of the following form:
+  #   needs_rast         => (asmids)
+  #   pending_rast       => (rast_jobids)
+  #   complete_rast      => (rast_jobids)
+  #   needs_modelseed    => (rast_jobids)
+  #   pending_modelseed  => (rast_jobids)
+  #   complete_modelseed => (rast_jobids)
+  #
+  # known_assemblies are parsed as follows
+  #   needs_rast: asmids without rast_jobids
+  #   pending_rast: rast_jobids without rast_taxid 
+  #   complete_rast: rast_jobids with a rast_taxid
+  #   needs_modelseed: rast_taxid without modelseed_id
+  #   pending_modelseed: modelseed_id without smbl file
+  #   complete_modelseed: has smbl file
+  my @asmids = @_;
+  my %ret;
+
+  my $known_asmids = get_known(@asmids);
+  for my $asmid (keys %{$known_asmids}) {
+    my $asm = $known_asmids->{$asmid};
+    if (!$asm) {
+      push @{$ret{needs_rast}}, $asmid;
+    } else {
+      for my $jobid (keys %{$asm}) {
+        push @{$ret{complete_rast}}, $jobid if $asm->{rast_result};
+        push @{$ret{complete_modelseed}}, $jobid if $asm->{modelseed_result};
+        push @{$ret{needs_modelseed}}, $jobid if !$asm->{modelseed_id};
+        push @{$ret{pending_rast}}, $jobid if !$asm->{rast_taxid};
+        push @{$ret{pending_modelseed}}, $jobid if 
+          $asm->{modelseed_id} && !$asm->{modelseed_result};
+      }
     }
   }
   return \%ret;
