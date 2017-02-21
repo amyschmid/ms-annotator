@@ -4,7 +4,7 @@ package MSAnnotator::Main;
 use MSAnnotator::Base;
 use MSAnnotator::Config;
 use MSAnnotator::NCBI qw(get_assemblies download_assemblies);
-use MSAnnotator::RAST qw(rast_submit rast_complete);
+use MSAnnotator::RAST qw(rast_submit rast_get_results);
 use MSAnnotator::KnownAssemblies qw(update_known get_tasks);
 
 # Export functions
@@ -21,15 +21,25 @@ sub main {
   # For testing...
   update_known('433392', $assemblies->{'GCA_001266695.1_ASM126669v1'});
   update_known('419360', $assemblies->{'GCA_001266735.1_ASM126673v1'});
-  update_known('123444', $assemblies->{'GCA_000337155.1_ASM33715v1'});
 
+  # Get current tasks
   my @asmids = keys %{$assemblies};
   my $tasks = get_tasks(@asmids);
+
+  say "Tasks:";
   say Dumper $tasks;
 
-  rast_complete($tasks->{pending_rast});
-  
-  #submit_rast($tasks->{needs_rast}, $assemblies);
+  if ($tasks->{pending_rast}) {
+    rast_get_results($tasks->{pending_rast}, $assemblies)
+  }
+
+  if ($tasks->{needs_modelseed}) {
+    ms_submit($taskss->{needs_modelseed}, $assemblies)
+  }
+
+  #if ($tasks->{needs_rast}) {
+  #  rast_submit($tasks->{needs_rast}, $assemblies);
+  #}
 
 }
 

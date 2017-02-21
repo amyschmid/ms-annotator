@@ -7,17 +7,19 @@ use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 use RASTserver;
 
 # Load custom modules
-use MSAnnotator::Base
+use MSAnnotator::Base;
+use MSAnnotator::KnownAssemblies qw(update_known get_known_assemblies);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(rast_submit rast_complete);
+our @EXPORT_OK = qw(rast_submit rast_get_results);
 
 # Constants
 use constant genbank_suffix => "_genomic.gbff";
 
 # Load credentials
 my ($user, $password) = @{LoadFile("credentials.yaml")}{qw(user password)};
+my $rast_client = RASTserver->new($user, $password);
 
 
 sub prepare_genbankfile {
@@ -25,7 +27,7 @@ sub prepare_genbankfile {
   my ($asmids, $assemblies) = @_;
   my $pm = new Parallel::ForkManager(10);
   for my $asmid (@{$asmids}) {
-    my $gzfile = $assemblies->{$asmid}->{local_path} . 
+    my $gzfile = $assemblies->{$asmid}->{local_path} .
       "/NCBI/$asmid" . genbank_suffix . ".gz";
     my $gbfile = $assemblies->{$asmid}->{local_path} .
       "/$asmid" . genbank_suffix;
@@ -33,7 +35,7 @@ sub prepare_genbankfile {
     # Extract gz file
     if (! -e $gbfile) {
       $pm->start and next;
-      gunzip $gzfile => $gbfile or croak "Error: $GunzipError";
+      gunzip $gzfile => $gbfile or croak "Error - $GunzipError";
       chmod 0440, $gbfile;
       $pm->finish;
     }
@@ -55,14 +57,11 @@ sub rast_submit {
   # Ensure genbank files are extracted
   prepare_genbankfile($asmids, $assemblies);
 
-  # Make connection and coak if not OK
-  my $rast_client = RASTserver->new($user, $password);
-
   # Iterate through ids, submit, and add rast_jobid to known
   for my $asmid (@{$asmids}) {
     my $asm = $assemblies->{$asmid};
     my $gbfile = "$asm->{local_path}/$asmid" . genbank_suffix;
-    croak "Error: Could not find: $gbfile" if ! -e $gbfile;
+    croak "Error - Could not find: $gbfile" if ! -e $gbfile;
 
     # Need to pass file, taxid, and organism name
     my $params = {
@@ -72,46 +71,102 @@ sub rast_submit {
       %opts};
     my $ret = $rast_client->submit_RAST_job($params);
 
-    # Catch errors 
-    if ($ret->{status} eq 'error') {
-      my $err = "Error: Durring RAST submission for $asmid\n";
-      if ($ret->{error_message}) {
-        $err = $err . "  RAST issued the following message: $ret->{error_message}";
-      }
-      croak $err;
-    } elsif ($ret->{status} eq 'ok') {
-      croak "Error: Absent jobid from RAST server for $asmid" unless $ret->{job_id};
+    # Catch errors
+    if ($ret->{status} eq 'ok') {
       update_known($ret->{job_id}, $asm);
     } else {
-      say Dumper $ret;
-      croak "Unknown status from RAST: $ret->{status}\n";
+      my $msg = $ret->{error_message};
+      my $err = "Error - Durring RAST submission for $asmid".
+        $msg ? "\n  RAST error message: $msg" : "\n";
+      croak $err;
     }
   }
 }
 
-sub rast_complete {
+sub rast_get_complete {
   # Takes array of jobids and returns jobids that are complete
   my $jobids = shift;
   my @ret;
 
   # Make connection and coak if not OK
-  my $rast_client = RASTserver->new($user, $password);
   my $stat = $rast_client->status_of_RAST_job({-job => $jobids});
   for my $jobid (@{$jobids}) {
-    if ($stat->{$jobid}->{status} eq "error") {
-      my $err = "Error: RAST error while checking status for job: $jobid\n";
-      if ($stat->{$jobid}->{'error_msg'}) {
-        $err = $err . "  RAST error message: $stat->{$jobid}->{'error_msg'}\n";
-      }
-      croak "$err";
-    } elsif ($stat->{$jobid}->{status} eq "complete") {
+    if ($stat->{$jobid}->{status} eq "complete") {
       push @ret, $jobid;
     } else {
-      say Dumper $stat->{$jobid};
-      croak "Unknown status from RAST: $stat->{$jobid}->{status}\n";
+      my $msg = $stat->{$jobid}->{'error_msg'};
+      my $err = "Error - While checking status for job: $jobid".
+        $msg ? "\n  RAST error message: $msg\n" : "\n";
+      croak $err;
     }
   }
   return \@ret;
 }
+
+sub rast_get_results {
+  # Takes array of jobids and returns jobids that are complete
+  # Fetches resulting gbff from RAST server and updates known
+  my ($jobids, $assemblies) = @_;
+  my (@ret, $asm_jobids);
+
+  # Get all complete jobs
+  my $comp_jobids = rast_get_complete($jobids);
+
+  if ($comp_jobids) {
+    $asm_jobids = get_known_assemblies($comp_jobids);
+  }
+
+  if ($asm_jobids) {
+    # Download resulting genbank files
+    while (my ($jobid, $asmid) = each %{$asm_jobids}) {
+      my $content = "";
+      open(my $buffer, '>', \$content);
+      my $res = $rast_client->retrieve_RAST_job({
+          -job => $jobid,
+          -filehandle => $buffer,
+          -format => "genbank"});
+
+      # Print result to file or croak on error
+      if ($res->{status} eq 'ok') {
+        my $asm = $assemblies->{$asmid};
+        my $fn= "$asm->{local_path}/RAST$jobid.gbff";
+
+        # Save results
+        open(my $fh, '>', $fn) or croak "Error - Writing to $fn: $!\n";
+        print $fh $content;
+        chmod 0440, $fn;
+        close $fh;
+
+        # Get rast_taxid and update known
+        my $rast_taxid = rast_get_rastid($fn);
+        update_known($jobid, {rast_result => $fn});
+        update_known($jobid, {rast_taxid => $rast_taxid});
+
+      } else {
+        my $msg = $res->{error_mesg};
+        my $err = "Error - While fetching RAST results for $jobid".
+          $msg ? ":\n  RAST error message: $msg\n" : "\n";
+        croak $err;
+      }
+      close $buffer;
+    }
+  }
+}
+
+sub rast_get_rastid {
+  # Given a filename of genbank formatted RAST result
+  # Returns rast_taxid found in the "/genome_id" field
+  my $file = shift;
+  open(my $fh, "<", $file) or croak "Error - Cannot read $file: $!\n";
+  my $ret;
+  while (my $line = <$fh>) {
+    next unless $line =~ /\/genome_id="([^"]+)/;
+    $ret = $1;
+    last;
+  }
+  croak "Error - Could not determine rast_taxid for: $file" unless $ret;
+  return $ret;
+}
+
 
 1;

@@ -35,7 +35,7 @@ sub load_config {
 
   # Ensure header exists
   my @header = map { lc $_ } @{$csv->getline($fh)};
-  croak "Error: No taxid field in annotate_file\n" if not 'taxid' ~~ @header;
+  croak "Error - No taxid field in annotate_file\n" if not 'taxid' ~~ @header;
 
   # Loop through and push ids to config
   $csv->column_names(@header);

@@ -64,18 +64,18 @@ sub load_ncbi_assemblies {
     if (@line_parsed ~~ @assembly_header) {
       @header = @line_parsed;
       last;
-    } 
+    }
   }
 
   # Ensure something was found
-  croak "Error: Unexpected header format in NCBI assembly file\n" if !@header;
-  
+  croak "Error - Unexpected header format in NCBI assembly file\n" if !@header;
+
   # Make return hash
   my %ret;
   $csv->column_names(@header);
   while (my $row = $csv->getline_hr($fh)) {
     my $key = (split('/', $row->{ftp_path}))[-1];
-    croak "Error: Duplicate assembly ids found\n" if exists $ret{$key};
+    croak "Error - Duplicate assembly ids found\n" if exists $ret{$key};
     $ret{$key} = clone $row;
     $ret{$key}{assembly} = $key;
   }
@@ -120,7 +120,7 @@ sub get_assemblies {
 sub download_assembly {
   # Download assembly from NCBI
   # Available filetypes:
-  #   
+  #
   my ($asmid, $baseurl, $download_path) = @_;
   my @filetypes = (
     "_assembly_report.txt",
@@ -132,7 +132,7 @@ sub download_assembly {
     chmod 0750, $download_path;
   } else {
     make_path($download_path) or
-      croak "Error: Could not create: $download_path";
+      croak "Error - Could not create: $download_path";
   }
 
   # Loop through filetypes, download, and check md5
