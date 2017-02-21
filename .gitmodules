@@ -1,9 +1,9 @@
 [submodule "resources/include/ProbModelSEED"]
-	path = resources/include/ProbModelSEED
+	path = include/ProbModelSEED
 	url = https://github.com/ModelSEED/ProbModelSEED.git
 [submodule "resources/include/KBaseClient"]
 	path = include/KBaseClient
 	url = https://github.com/ModelSEED/KBaseClient.git
 [submodule "resources/include/Workspace"]
-	path = resources/include/Workspace
+	path = include/Workspace
 	url = https://github.com/PATRIC3/Workspace.git
