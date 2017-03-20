@@ -10,3 +10,6 @@
 [submodule "include/PATRICClient"]
 	path = include/PATRICClient
 	url = https://github.com/ModelSEED/PATRICClient.git
+[submodule "include/MSSeedSupportServer"]
+	path = include/MSSeedSupportServer
+	url = https://github.com/ModelSEED/MSSeedSupportServer.git

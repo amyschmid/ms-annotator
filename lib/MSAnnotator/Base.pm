@@ -13,11 +13,12 @@ sub import {
   # Auto import Dumper, get the importing package name
   my $caller = caller(0);
 
-  do { 
+  do {
     no strict 'refs';
     *{"$caller\:\:Dumper"} = *{"Data\:\:Dumper\:\:Dumper"};
     *{"$caller\:\:croak"} = *{"Carp\:\:croak"};
     *{"$caller\:\:carp"} = *{"Carp\:\:carp"};
+    $| ++;
   };
 }
 

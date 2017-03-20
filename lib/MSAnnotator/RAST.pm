@@ -35,11 +35,12 @@ sub prepare_genbankfile {
     # Extract gz file
     if (! -e $gbfile) {
       $pm->start and next;
-      gunzip $gzfile => $gbfile or croak "Error - $GunzipError";
+      gunzip $gzfile => $gbfile or croak "Error - GunzipError: $GunzipError";
       chmod 0440, $gbfile;
       $pm->finish;
     }
   }
+  $pm->wait_all_children;
 }
 
 sub rast_submit {
@@ -103,6 +104,21 @@ sub rast_get_complete {
   return \@ret;
 }
 
+sub rast_get_rastid {
+  # Given a filename of genbank formatted RAST result
+  # Returns rast_taxid found in the "/genome_id" field
+  my $file = shift;
+  open(my $fh, "<", $file) or croak "Error - Cannot read $file: $!\n";
+  my $ret;
+  while (my $line = <$fh>) {
+    next unless $line =~ /\/genome_id="([^"]+)/;
+    $ret = $1;
+    last;
+  }
+  croak "Error - Could not determine rast_taxid for: $file" unless $ret;
+  return $ret;
+}
+
 sub rast_get_results {
   # Takes array of jobids and returns jobids that are complete
   # Fetches resulting gbff from RAST server and updates known
@@ -152,21 +168,5 @@ sub rast_get_results {
     }
   }
 }
-
-sub rast_get_rastid {
-  # Given a filename of genbank formatted RAST result
-  # Returns rast_taxid found in the "/genome_id" field
-  my $file = shift;
-  open(my $fh, "<", $file) or croak "Error - Cannot read $file: $!\n";
-  my $ret;
-  while (my $line = <$fh>) {
-    next unless $line =~ /\/genome_id="([^"]+)/;
-    $ret = $1;
-    last;
-  }
-  croak "Error - Could not determine rast_taxid for: $file" unless $ret;
-  return $ret;
-}
-
 
 1;

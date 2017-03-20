@@ -58,6 +58,7 @@ sub load_ncbi_assemblies {
   # Look for header
   my @header;
   while (my $line = <$fh>) {
+    chop $line;
     $line =~ s/^#\s+//;
     $csv->parse($line);
     my @line_parsed = $csv->fields();
@@ -156,6 +157,7 @@ sub download_assemblies {
       $assemblies->{$asmid}->{local_path} . "/NCBI");
     $pm->finish;
   }
+  $pm->wait_all_children;
   return $assemblies;
 }
 

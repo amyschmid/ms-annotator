@@ -10,8 +10,6 @@ incdir="../include"
 # External libaries to append to PERL5LIB
 external_libs=(
 	$incdir/ProbModelSEED/lib
-	$incdir/PATRICClient/lib
-	$incdir/MSSeedSupportServer/lib
 	$incdir/Workspace/lib
 	$incdir/KBaseClient/lib
   $incdir/SEED-API/lib)
