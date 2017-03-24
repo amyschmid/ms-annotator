@@ -11,7 +11,6 @@
 use strict;
 use ModelSEED::FIGMODEL;
 use ModelSEED::FBAMODEL;
-use Data::Dumper;
 use SAP;
 use LWP::Simple;
 $|=1;
@@ -53,9 +52,9 @@ for (my $i=0; $i < @ARGV; $i++) {
 #Printing the finish file if specified
 if ($FinishedFile ne "NONE") {
     if ($FinishedFile =~ m/^\//) {
-        ModelSEED::FIGMODEL::PrintArrayToFile($FinishedFile,[$Status]);
+        FIGMODEL::PrintArrayToFile($FinishedFile,[$Status]);
     } else {
-        ModelSEED::FIGMODEL::PrintArrayToFile($driv->{_figmodel}->{"database message file directory"}->[0].$FinishedFile,[$Status]);
+        FIGMODEL::PrintArrayToFile($driv->{_figmodel}->{"database message file directory"}->[0].$FinishedFile,[$Status]);
     }
 }
 
@@ -83,21 +82,6 @@ sub figmodel {
 	return $self->{_figmodel};
 }
 
-=head3 check
-Definition:
-	FIGMODEL = driver->check([string]:expected data,(string):supplied arguments);
-Description:
-	Check for sufficient arguments
-=cut
-sub check {
-	my ($self,$array,@Data) = @_;
-	if ((@Data - 1) < @{$array}) {
-		print "Insufficient arguments, usage:".$Data[0]."?".join("?",@{$array})."\n";
-		return 0;
-	}
-	return 1;
-}
-
 =head3 outputdirectory
 Definition:
 	FIGMODEL = driver->outputdirectory();
@@ -109,38 +93,7 @@ sub outputdirectory {
 	return $self->{_outputdirectory};
 }
 
-sub makeArgumentHashFromCommand {
-    my ($self, @Data);
-    my $error = <<XATNYS;
-Advanced command syntax:
-    ProdModelDriver.sh normal?arguments?-flag?-flagWith=Value?more?normal?args
-    Basically, ?-flag? for a boolean flag, ?-flag=Value? for a key -> value pair.
-    Returns (hash, arrayRef) where hash is a hash of key -> value and key -> '1' for flags.
-    And arrayRef is all remaining normal arguments
-XATNYS
-    my $args = {};
-    my $otherArgs = [];
-    for(my $i=0; $i< scalar(@Data); $i++) {
-        if($Data[$i] =~ m/^-(.+)=(.+)/) {
-            my $key = $1;
-            my $value = $2;
-            if(length($key) > 0 && length($value) > 0) {
-                $args->{$key} = $value; 
-                next;
-            }
-        }
-        if($Data[$i] =~ m/^-(.+)/) {
-            my $key = $1;
-            if(length($key) > 0) {
-                $args->{$key} = 1;
-                next;
-            }
-        }
-        push(@$otherArgs, $Data[$i]); # Push onto other arguments if we didn't find a flagged one
-    }
-    return ($args, $otherArgs);
-}
-            
+#Individual subroutines are all listed here
 sub transporters {
     my($self,@Data) = @_;
 
@@ -232,16 +185,18 @@ sub createmodelfile {
 	if (defined($Data[3])) {
 		$user = $Data[3];
 	}
+
 	#Creating the list of genomes that models should be build for
 	my $List;
 	if ($Data[1] =~ m/LIST-(.+)$/) {
-        $List = $self->figmodel()->database()->load_single_column_file($1,"");
+        $List = FIGMODEL::LoadSingleColumnFile($1,"");
 	} else {
 		$List = [$Data[1]];
 	}
+
 	#Building the models
 	for (my $i=0; $i < @{$List}; $i++) {
-		$self->figmodel()->createNewModel({-genome => $List->[$i],-owner => $user,-gapfilling => $Data[2]})
+		$self->figmodel()->CreateSingleGenomeReactionList($List->[$i],$user,$Data[2]);
 	}
 	print "Model file successfully generated.\n\n";
     return "SUCCESS";
@@ -307,90 +262,6 @@ sub calculatemodelchanges {
 		return "SUCCESS" 
 	}
     return "CRASH";
-}
-
-sub gatherroledata {
-	my($self,@Data) = @_;
-    my $hash;
-    my $roleHash;
-    my $mdls = $self->figmodel()->database()->get_objects("model",{owner=>"chenry"});
-    my $count = 0;
-    my $noRoleTbl;
-    for (my $i=0; $i < @{$mdls}; $i++) {
-    	if ($mdls->[$i]->id() =~ m/Seed.+/ && $mdls->[$i]->growth() > 0 && $mdls->[$i]->source() =~ m/SEED/) {
-	    	$count++;
-	    	print "Running:".$mdls->[$i]->id()."\t".$count."\n";
-	    	my $mdl = $self->figmodel()->get_model($mdls->[$i]->id());
-	    	if (-e $mdl->directory()."Roles.tbl") {
-		    	my $roleTbl = $self->figmodel()->database()->load_table($mdl->directory()."Roles.tbl",";","|",0,["ROLE","REACTIONS","GENES","ESSENTIAL"]);		
-		    	for (my $j=0; $j < $roleTbl->size(); $j++) {
-		    		my $row = $roleTbl->get_row($j);
-		    		$roleHash->{$row->{ROLE}->[0]} = 1;
-		    		if (!defined($row->{REACTIONS}->[0])) {
-		    			$hash->{$mdls->[$i]->id()}->{$row->{ROLE}->[0]} = 0;
-		    		} elsif (!defined($row->{ESSENTIAL}->[0]) || $row->{ESSENTIAL}->[0] == 0) {
-		    			$hash->{$mdls->[$i]->id()}->{$row->{ROLE}->[0]} = 1;
-		    		} elsif (defined($row->{GENES}->[0]) && length($row->{GENES}->[0]) > 0) {
-			    		$hash->{$mdls->[$i]->id()}->{$row->{ROLE}->[0]} = 2;
-		    		} else {
-		    			$hash->{$mdls->[$i]->id()}->{$row->{ROLE}->[0]} = 3;	
-		    		}
-		    	}
-	    	} else {
-	    		push(@{$noRoleTbl},$mdls->[$i]->id());
-	    	}
-    	}
-    }
-    $self->figmodel()->database()->print_array_to_file("/home/chenry/NoRoleTbl.txt",$noRoleTbl);
-    my $output = [""];
-    foreach my $model (keys(%{$hash})) {
-    	$output->[0] .= "\t".$model;
-    }
-    my @roleLists = keys(%{$roleHash});
-    for (my $i=0; $i < @roleLists; $i++) {
-     	$output->[$i+1] = $roleLists[$i];
-     	foreach my $model (keys(%{$hash})) {
-	    	if (defined($hash->{$model}->{$roleLists[$i]})) {
-	    		$output->[$i+1] .= "\t".$hash->{$model}->{$roleLists[$i]};
-	    	} else {
-	    		$output->[$i+1] .= "\t-1";
-	    	}
-	    }
-	}
-	$self->figmodel()->database()->print_array_to_file("/home/chenry/RoleStats.txt",$output);
-}
-
-sub printroletables {
-	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: printroletables?(Model ID)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $list;
-    if ($Data[1] =~ m/ALL/) {
-    	my $mdls = $self->figmodel()->database()->get_objects("model",{owner=>"chenry"});
-    	for (my $i=0; $i < @{$mdls}; $i++) {
-    		if ($mdls->[$i]->id() =~ m/Seed.+/ && $mdls->[$i]->growth() > 0 && $mdls->[$i]->source() =~ m/SEED/) {
-	    		push(@{$list},$mdls->[$i]->id());
-    		}
-    	}
-    } elsif ($Data[1] =~ m/LIST-(.+)/) {
-    	my $filename = $1;
-    	$list = $self->figmodel()->database()->load_single_column_file($filename,"");
-    }
-    if (defined($list)) {
-    	my $count = 0;
-    	for (my $i=0; $i < @{$list}; $i++) {
-    		$count++;
-    		print "Running:".$list->[$i]."\t".$count."\n";
-    		system("/home/chenry/ProdModelDriver.sh printroletables?".$list->[$i]);
-    	}
-    	return;
-    }
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		$mdl->role_table({create=>1});
-	}
 }
 
 sub processmodel {
@@ -597,71 +468,6 @@ sub simulateexperiment {
     return 0;
 }
 
-sub simulateintervalphenotypes {
-    my($self,@Data) = @_;
-	if (@Data < 3) {
-        print "Syntax for this command: simulateintervalphenotypes?(models)?(phenotype filename)?(Output filename)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    #Creating the output table
-    my $tbl = ModelSEED::FIGMODEL::FIGMODELTable->new(["Interval","Parent","Media","GeneKO","Source","Experiment growth"],$Data[3],["Interval","Media"],"\t","|",undef);
-    #Parsing the phenotype file
-    my $data = $self->figmodel()->database()->load_multiple_column_file($Data[2],"\t");
-	my $args;
-	for (my $i=1; $i < @{$data}; $i++) {
-		if (defined($data->[$i]->[4])) {
-			$tbl->add_row({"Interval" => [$data->[$i]->[0]],"Parent" => [$data->[$i]->[4]],"Media" => [$data->[$i]->[2]],"Source" => [$data->[$i]->[1]],"Experiment growth" => [$data->[$i]->[3]]});
-			push(@{$args->{intervals}},$data->[$i]->[0]);
-			push(@{$args->{media}},$data->[$i]->[2]);
-		}
-	}
-    #Running FBA
-	my $modelList;
-	push(@{$modelList},split(/;/,$Data[1]));
-	for (my $i=0; $i < @{$modelList}; $i++) {
-		$tbl->add_headings(($modelList->[$i]." rxnKO",$modelList->[$i]." WT growth",$modelList->[$i]." fraction",$modelList->[$i]." class"));
-		my $fbaObj = $self->figmodel()->fba({model => $modelList->[$i]});
-		$fbaObj->media("LB");
-		$fbaObj->setIntervalPhenotypeStudy($args);
-		$fbaObj->runFBA();
-		print "Directory:".$fbaObj->directory()."\n";
-		my $results = $fbaObj->parseIntervalPhenotypeStudy();
-		foreach my $int (keys(%{$results})) {
-			foreach my $media (keys(%{$results->{$int}})) {
-				for (my $j=0; $j < $tbl->size(); $j++) {
-					my $row = $tbl->get_row($j);
-					if ($row->{Interval}->[0] eq $int && $row->{Media}->[0] eq $media) {
-						if (!defined($row->{GeneKO})) {
-							$row->{GeneKO}->[0] = $results->{$int}->{$media}->{geneKO};
-						}
-						$row->{$modelList->[$i]." rxnKO"}->[0] = $results->{$int}->{$media}->{reactionKO};
-						$row->{$modelList->[$i]." WT growth"}->[0] = $results->{$int}->{$media}->{wildTypeGrowth};
-						$row->{$modelList->[$i]." fraction"}->[0] = $results->{$int}->{$media}->{fraction};
-						if ($row->{"Experiment growth"}->[0] == 0) {
-							if ($row->{$modelList->[$i]." fraction"}->[0] > 0.05) {
-								$row->{$modelList->[$i]." class"}->[0] = "FP";
-							} else {
-								$row->{$modelList->[$i]." class"}->[0] = "CN";
-							} 
-						} else {
-							if ($row->{$modelList->[$i]." fraction"}->[0] > 0.05) {
-								$row->{$modelList->[$i]." class"}->[0] = "CP";
-							} else {
-								$row->{$modelList->[$i]." class"}->[0] = "FN";
-							}
-						}
-						last;
-					}
-				}
-			}
-		}
-	}
-	#Printing final results in a table
-	$tbl->sort_rows("Media");
-	$tbl->sort_rows("Interval");
-	$tbl->save();
-}
-
 sub simulatestrains {
     my($self,@Data) = @_;
 
@@ -777,27 +583,6 @@ sub comparemodels {
     print "Model comparison successful.\n\n";
 }
 
-sub comparemodelreactions {
-	my($self,@Data) = @_;
-    if (@Data < 4) {
-        print "Syntax for this command: comparemodelreactions?(model one)?(model two)?(output filename)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $mdlOne = $self->figmodel()->get_model($Data[1]);
-    my $mdlTwo = $self->figmodel()->get_model($Data[2]);
-    my $tbl = $mdlOne->compare_two_reaction_tables({compareTbl => $mdlTwo->reaction_table(),note => $mdlOne->id()." to ".$mdlTwo->id()});
-    $tbl->save($Data[3]);
-}
-
-sub comparemodelgenes {
-	my($self,@Data) = @_;
-	if (@Data < 3) {
-        print "Syntax for this command: comparemodelgenes?(model one)?(model two)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	$self->figmodel()->CompareModelGenes($Data[1],$Data[2]);
-}
-
 sub makehistogram {
     my($self,@Data) = @_;
 
@@ -819,16 +604,19 @@ sub makehistogram {
 
 sub classifyreactions {
     my($self,@Data) = @_;
+
+    #Checking the argument to ensure all required parameters are present
     if (@Data < 2) {
-        print "Syntax for this command: classifyreactions?(Model name)?(Media)?(Preserve results in model database)?(Force growth).\n\n";
+        print "Syntax for this command: classifyreactions?(Model name)?(Media)?(Preserve results in model database).\n\n";
         return "ARGUMENT SYNTAX FAIL";
     }
+
+    #Handling default media
     if (!defined($Data[2])) {
         $Data[2] = "Complete";
     }
-    if (!defined($Data[4])) {
-        $Data[4] = "1";
-    }
+
+	#Model list
     my $ModelList;
 	if ($Data[1] eq "ALL") {
 		for (my $i=0; $i < $self->figmodel()->number_of_models(); $i++) {
@@ -840,27 +628,21 @@ sub classifyreactions {
 			push(@{$ModelList},$self->figmodel()->get_model($temparray[$i]));
 		}
 	}
+
+	#Running classification
 	my $Success = "SUCCESS:";
     my $Fail = "FAIL:";
     foreach my $Model (@{$ModelList}) {
         print "Now processing model: ".$Model->id()."\n";
-		my $results = $Model->fbaFVA({
-			media=>$Data[2],
-			growth=>"forced",
-			drnRxn=>["bio00001"],
-			saveFVAResults=>0,
-			outputDirectory=>$self->figmodel()->config("database message file directory")->[0]
-		});
-		if (defined($results->{tb})) {
-			my $output = ["ID\tMin\tMax\tClass"];
-			foreach my $key (keys(%{$results->{tb}})) {
-				push(@{$output},$key."\t".$results->{tb}->{$key}->{min}."\t".$results->{tb}->{$key}->{max}."\t".$results->{tb}->{$key}->{class});
-			}
-			$self->figmodel()->database()->print_array_to_file($self->outputdirectory().$Model->id()."-FVAresults.txt",$output);
-			$Success .= $Model->id().";";
-		} else {
-			$Fail .= $Model->id().";";
-		}
+		my ($rxnclasstable,$cpdclasstable) = $Model->classify_model_reactions($Data[2],$Data[3]);
+        $rxnclasstable->save($self->outputdirectory().$Model->id()."-".$Data[2]."-ReactionClasses.tbl");
+        $cpdclasstable->save($self->outputdirectory().$Model->id()."-".$Data[2]."-CompoundClasses.tbl");
+        #Checking that the table is defined and the output file exists
+        if (!defined($rxnclasstable)) {
+            $Fail .= $Model->id().";";
+        } else {
+            $Success .= $Model->id().";";
+        }
     }
 	print $Success."\n".$Fail."\n";
 	return "SUCCESS";
@@ -933,53 +715,20 @@ sub predictessentiality {
 sub processreaction {
 	my($self,@Data) = @_;
     if (@Data < 2) {
-        print "Syntax for this command: processreaction?(reaction)?(options)?(comparison file).\n\n";
+        print "Syntax for this command: processreaction?(reaction).\n\n";
         return "ARGUMENT SYNTAX FAIL";
     }
-    my $options = {
-    	overwriteReactionFile => 0,
-		loadToPPO => 0,
-		loadEquationFromPPO => 0,
-		comparisonFile => $Data[3]
-	};
-	if (defined($Data[2])) {
-		if ($Data[2] =~ m/o/) {
-			$options->{overwriteReactionFile} = 1;
+	if ($Data[1] eq "ALL") {
+		my $objs = $self->figmodel()->database()->get_objects("reaction");
+		for (my $i=0; $i < @{$objs}; $i++) {
+			print "Reaction ".$i.":".$objs->[$i]->id()."\n";
+			my $rxn = $self->figmodel()->get_reaction($objs->[$i]->id());
+			$rxn->updateReactionData();
 		}
-		if ($Data[2] =~ m/p/) {
-			$options->{loadToPPO} = 1;
-		}
-		if ($Data[2] =~ m/e/) {
-			$options->{loadEquationFromPPO} = 1;
-		}
-	}
-	my $results = $self->figmodel()->processIDList({
-		objectType => "reaction",
-		delimiter => ",",
-		column => "id",
-		parameters => {},
-		input => $Data[1]
-	});
-	if (defined($results->{error})) {
-		return "FIALED:".$results->{error};	
-	}
-	if (@{$results->{list}} == 1) {
-		my $rxn = $self->figmodel()->get_reaction($results->{list}->[0]);
-		if (defined($rxn)) {
-			$rxn->processReactionWithMFAToolkit($options);
-		}
-		return "SUCCESS";	
 	} else {
-		for (my $i=0; $i < @{$results->{list}}; $i++) {
-			my $command = "processreaction?".$results->{list}->[$i]."?";
-			for (my $j=2; $j < @Data; $j++) {
-				$command .= "?".$Data[$j];
-			}
-			$self->figmodel()->add_job_to_queue({
-				command => $command,
-				queue => "fast",
-				priority => 3
-			});
+		my $rxn = $self->figmodel()->get_reaction($Data[1]);
+		if (defined($rxn)) {
+			$rxn->updateReactionData();
 		}
 	}
 }
@@ -1125,6 +874,7 @@ sub loadgapfillsolution {
 
 sub gapfillmodel {
     my($self,@Data) = @_;
+
     #Checking the argument to ensure all required parameters are present
     if (@Data < 2) {
         print "Syntax for this command: gapfillmodel?(Model ID)?(do not clear existing solution)?(print LP file rather than solving).\n\n";
@@ -1133,13 +883,13 @@ sub gapfillmodel {
     #Gap filling the model
     my $model = $self->figmodel()->get_model($Data[1]);
 	if (defined($model)) {
-		$model->GapFillModel($Data[2],$Data[3], $Data[4]);
+		$model->GapFillModel($Data[2],$Data[3]);
 	} elsif (-e $Data[1]) {
 		my $list = $self->figmodel()->database()->load_single_column_file($Data[1]);
 		for (my $i=0; $i < @{$list}; $i++) {
 			my $model = $self->figmodel()->get_model($list->[$i]);
 			if (defined($model)) {
-				$model->GapFillModel($Data[2],$Data[3], $Data[4]);
+				$model->GapFillModel($Data[2],$Data[3]);
 			}
 		}
 	}
@@ -1151,352 +901,15 @@ sub gapfillmodel {
     return "SUCCESS";
 }
 
-sub gapfillstudies {
-    my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 2) {
-        print "Syntax for this command: gapfillstudies?(Model ID)?(queue job)?(tolerance)?(inactive coef)?(only one solution)?(min flux).\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $parameters = {
-    	queue => 0,
-    	tolerance => 0.000000001,
-    	inactiveCoef => 0.1,
-    	minFlux => 0.01,
-    	onlyOneSolution => 0
-    };
-    if (defined($Data[2])) {
-    	$parameters->{queue} = $Data[2];
-    }
-    if (defined($Data[3])) {
-    	$parameters->{tolerance} = $Data[3];
-    }
-    if (defined($Data[4])) {
-    	$parameters->{inactiveCoef} = $Data[4];
-    }
-    if (defined($Data[5])) {
-    	$parameters->{onlyOneSolution} = $Data[5];
-    }
-    if (defined($Data[6])) {
-    	$parameters->{minFlux} = $Data[6];
-    }
-    if ($parameters->{queue} == 1) {
-    	$self->figmodel()->add_job_to_queue({
-    		command => "gapfillstudies?".$Data[1]."?0?".$parameters->{tolerance}."?".$parameters->{inactiveCoef}."?".$parameters->{onlyOneSolution}."?".$parameters->{minFlux},
-    		queue => "cplex",
-    		user => "chenry",
-    	});
-    } else {
-    	my $studyTime = time();
-    	my $mdl = $self->figmodel()->get_model($Data[1]);
-    	my $fbaObj = $mdl->fba();
-		$fbaObj->makeOutputDirectory();
-		$mdl->printInactiveReactions({filename=>$fbaObj->directory()."/InactiveModelReactions.txt"});
-		$fbaObj->setCompleteGapfillingStudy({
-			minimumFluxForPositiveUseConstraint => $parameters->{minFlux},
-			gapfillCoefficientsFile => "NONE",
-			inactiveReactionBonus => $parameters->{inactiveCoef},
-			drainBiomass => "bio00001",
-			media => "Complete"
-		});
-		$fbaObj->set_parameters({
-			"Solve complete gapfilling only once" => $parameters->{onlyOneSolution},
-			"Solver tolerance" => $parameters->{tolerance},
-			"write LP file" => "0"
-		});
-		$fbaObj->runFBA();
-		my $result = $fbaObj->parseCompleteGapfillingStudy({});
-		my $gapFilledHash;
-		my $studyParameters = $Data[1].";".$parameters->{minFlux}.";".$parameters->{tolerance}.";".$parameters->{inactiveCoef}.";".$parameters->{onlyOneSolution};
-		my $filename = $studyParameters.".txt";
-		my $output = ["Target reaction;Gapfilled;Activated"];
-		foreach my $key (keys(%{$result})) {
-			my $line = $key.";";
-			if (defined($result->{$key}->{gapfilled})) {
-				for (my $i=0; $i < @{$result->{$key}->{gapfilled}}; $i++) {
-					$gapFilledHash->{$result->{$key}->{gapfilled}->[$i]} = 1;
-				}
-				$line .= join("|",@{$result->{$key}->{gapfilled}});
-			}
-			$line .= ";";
-			if (defined($result->{$key}->{repaired})) {
-				$line .= join("|",@{$result->{$key}->{repaired}});
-			}
-			push(@{$output},$line);
-		}
-		$studyTime = time() - $studyTime;
-		$self->figmodel()->database()->print_array_to_file("/home/chenry/GapFilledResults/".$filename,$output);
-		$self->figmodel()->database()->print_array_to_file("/home/chenry/GapFilledResults/CompiledResults.txt",[$studyParameters.";".$studyTime.";".join("|",keys(%{$gapFilledHash}))],1);
-    }
-    return "SUCCESS";
-}
-
-sub addreactionstomodel {
-    my($self,@Data) = @_;
-    if (@Data < 5) {
-        print "Syntax for this command: addreactionstomodel?(Model ID)?(username)?(reasons)?(reactions).\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	my $reactionList = [split(/;/,$Data[4])];
-	my $pegList;
-	for (my $i=0; $i < @{$reactionList}; $i++) {
-		$pegList->[$i] = ["AUTOCOMPLETION"];
-	}
-	if (defined($mdl)) {
-		$mdl->add_reactions({
-			ids => $reactionList,
-			pegs => $pegList,
-			user => $Data[2],
-			reason => $Data[3],
-			adjustmentOnly => 1
-		});
-	}
-}
-
-sub completegapfillmodel {
-    my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 2) {
-        print "Syntax for this command: completegapfillmodel?(Model ID)?(do not clear existing solution)?(Activity check)?(print LP file only).\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    #Getting model list
-    if ($Data[1] eq "ALL") {
-    	my $genomeHash = $self->figmodel()->sapSvr("PSEED")->all_genomes(-complete => "TRUE",-prokaryotic => "TRUE");
-    	my $array;
-		push(@{$array},keys(%{$genomeHash}));
-		for (my $i=0; $i < @{$array}; $i++) {
-	    	$self->figmodel()->add_job_to_queue({command => "completegapfillmodel?Seed".$array->[$i].".796?".$Data[2]."?".$Data[3]."?".$Data[4],user => $self->figmodel()->user(),queue => "fast"});
-		}
-		return "SUCCESS";
-    }
-    #Compiling results
-    if ($Data[1] eq "GATHER") {
-    	my @fileList = glob($Data[2]."*");
-    	my $fba = $self->figmodel()->fba();
-    	
-    	my $output = ["Model ID\tNumber of gapfilled\tNumber of activated\tNumber of original inactive\tNumber of inactive\tObjective\tSolve time\tOpt gap\tMax infeasibility\tUnscaled infeas\tGapfilled\tActivated\tStill inactive"];
-    	for (my $i=0; $i < @fileList; $i++) {
-    		if ($fileList[$i] =~ m/(Seed.+)\.log\.txt/) {
-    			my $model = $1;
-    			my $cplexFilename = $fileList[$i];
-    			$cplexFilename =~ s/\.log\.txt/.cplex.out/;
-    			my $cplexData = {
-					objective => undef,
-					infeasibility => undef,
-					time => undef,
-					dualityGap => 0,
-					unscaledInfeas => 0
-				};
-    			if (-e $cplexFilename) {
-    				$cplexData = $fba->parseCplexLogFiles({cplexFile=>$cplexFilename});
-    				
-    			}
-				my $input = $self->figmodel()->database()->load_single_column_file($fileList[$i],"");
-    			my @dataArray = split(/\t/,$input->[0]);
-    			my @gapFilledArray = split(/,/,$dataArray[1]);
-    			my $numGF = @gapFilledArray;
-    			my @activated = split(/,/,$dataArray[2]);
-    			my $numAct = @activated;
-    			my $numInact = "?";
-    			my $numOrigInact = "?";
-    			my $stillInactive = "?";
-    			my $obj = $self->figmodel()->database()->get_object("mdlfva",{MODEL=>$model,MEDIA=>"Complete",parameters=>"NG;DR:bio00001;"});
-    			if (defined($obj)) {
-    				my @rxnList = split(/;/,$obj->inactive().$obj->dead());
-    				$numOrigInact = @rxnList - 1;
-    				$numInact = @rxnList - $numAct - 1;
-    				$stillInactive = ""; 
-    				my $hash;
-    				for (my $j=0; $j < (@rxnList-1); $j++) {
-    					$hash->{$rxnList[$j]} = 1;
-    				}
-    				for (my $j=0; $j < @activated; $j++) {
-    					$hash->{substr($activated[$j],4)} = 0;
-    				}
-    				foreach my $key (keys(%{$hash})) {
-    					if ($hash->{$key} == 1) {
-	    					if (length($stillInactive) > 0) {
-	    						$stillInactive .= ",";
-	    					}
-    						$stillInactive .= $key;
-    					}
-    				}
-    			}
-    			my $line = $model."\t".$numGF."\t".$numAct."\t".$numOrigInact."\t".$numInact."\t".$cplexData->{objective}."\t".$cplexData->{time}."\t".$cplexData->{dualityGap};
-    			$line .= "\t".$cplexData->{infeasibility}."\t".$cplexData->{unscaledInfeas}."\t".$dataArray[1]."\t".$dataArray[2]."\t".$stillInactive;
-    			push(@{$output},$line);
-    		}
-    	}
-    	$self->figmodel()->database()->print_array_to_file("/home/chenry/GapFillSummary.txt",$output);
-		return "SUCCESS";
-    }
-    #Parsing files and completing gapfilling
-    if ($Data[1] eq "PARSE") {
-    	my $list;
-    	if ($Data[2] =~ m/LIST-(.+)/) {
-    		my $input = $self->figmodel()->database()->load_single_column_file($1,"");
-    		for (my $i=0; $i < @{$input}; $i++) {
-    			if (-e $input->[$i].".log.txt") {
-    				push(@{$list},$input->[$i].".log.txt");
-    			}
-    		}
-    	} elsif ($Data[2] =~ m/\/$/) {
-    		my @fileList = glob($Data[2]."*");
-    		for (my $i=0; $i < @fileList; $i++) {
-	    		if ($fileList[$i] =~ m/(Seed.+)\.log\.txt/) {
-	    			push(@{$list},$fileList[$i]);
-	    		}
-    		}
-    	} else {
-    		$list = [$Data[2]];
-    	}
-    	if (@{$list} == 1) {
-    		if ($list->[0] =~ m/(Seed.+)\.log\.txt/) {
-    			my $id = $1;
-    			my $mdl = $self->figmodel()->get_model($id);
-    			if (defined($mdl)) {
-    				$mdl->completeGapfilling({solutionFile=>$list->[0]});	
-    			}	
-    		}
-    	} else {
-	    	for (my $i=0; $i < @{$list}; $i++) {
-	    		$self->figmodel()->add_job_to_queue({command => "completegapfillmodel?PARSE?".$list->[$i],queue =>"fast",user =>"chenry"});
-	    	}
-    	}
-    	return "SUCCESS";
-    }
-    #Gap filling the model
-    my $model = $self->figmodel()->get_model($Data[1]);
-	if (defined($model)) {
-		$model->completeGapfilling({printLPFileOnly=>$Data[4],doNotClear=>$Data[2],runReactionActivityCheck=>$Data[3]});
-	}
-    return "SUCCESS";
-}
-
-sub adjustlpfiles {
-    my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 3) {
-        print "Syntax for this command: adjustlpfiles?(in filename)?(out filename)?(coefficient)?(minimal active flux)?(target reaction).\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $fba = $self->figmodel()->fba();
-    if ($Data[1] eq "ALL") {
-    	my $genomeHash = $self->figmodel()->sapSvr("PSEED")->all_genomes(-complete => "TRUE",-prokaryotic => "TRUE");
-    	my $array;
-		push(@{$array},keys(%{$genomeHash}));
-		for (my $i=0; $i < @{$array}; $i++) {
-	    	my $mdl = $self->figmodel()->get_model("Seed".$array->[$i].".796");
-	    	system("rm -rf ".$Data[2]."Seed".$array->[$i].".796/");
-	    	system("mkdir ".$Data[2]."Seed".$array->[$i].".796/");
-	    	if (defined($mdl)) {
-	    		if (-e $mdl->directory()."completeGapFill.lp") {
-	    			my $parameters = {
-	    				LPfile => $mdl->directory()."completeGapFill.lp",
-	    				outFile => $Data[2]."Seed".$array->[$i].".796/problem.lp",
-	    				minActiveFlux=>$Data[4],
-	    				inactiveCoef => $Data[3]
-	    			};
-	    			if ($Data[5] eq "BIOMASS") {
-	    				$parameters->{target} = $mdl->biomassReaction();
-	    			}
-	    			$fba->adjustObjCoefLPFile($parameters);
-	    		}
-	    	}
-		}
-		return "SUCCESS";
-    } elsif ($Data[1] =~ m/^Seed\d+\.\d+.+$/) {
-    	my $mdl = $self->figmodel()->get_model($Data[1]);
-    	system("rm -rf ".$Data[2].$Data[1]."/");
-    	system("mkdir ".$Data[2].$Data[1]."/");
-    	if (defined($mdl)) {
-    		if (-e $mdl->directory()."completeGapFill.lp") {
-    			my $parameters = {
-    				LPfile => $mdl->directory()."completeGapFill.lp",
-    				outFile => $Data[2].$Data[1]."/problem.lp",
-    				minActiveFlux=>$Data[4],
-    				inactiveCoef => $Data[3]
-    			};
-    			if ($Data[5] eq "BIOMASS") {
-    				$parameters->{target} = $mdl->biomassReaction();
-    			}
-    			$fba->adjustObjCoefLPFile($parameters);
-    		}
-    	}
-		return "SUCCESS";
-    }	
-}
-
-sub printinactiverxns {
-    my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 3) {
-        print "Syntax for this command: printinactiverxns?(Model ID)?(directory).\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    #Loading priority list
-    my $priorities = $self->figmodel()->database()->load_single_column_file($self->figmodel()->config("reaction priority list")->[0],"\t");
-    #Getting model list
-    my $list;
-    if ($Data[1] eq "ALL") {
-    	my $genomeHash = $self->figmodel()->sapSvr("PSEED")->all_genomes(-complete => "TRUE",-prokaryotic => "TRUE");
-    	my $array;
-		push(@{$array},keys(%{$genomeHash}));
-		for (my $i=0; $i < @{$array}; $i++) {
-	    	push(@{$list},"Seed".$array->[$i].".796");
-		}
-    } else {
-    	$list->[0] = $Data[1];
-    }
-    #Printing lists
-    for (my $i=0;$i < @{$list}; $i++) {
-    	my $obj = $self->figmodel()->database()->get_object("mdlfva",{MODEL=>$list->[$i],MEDIA=>"Complete",parameters=>"NG;DR:bio00001;"});
-    	my $mdl = $self->figmodel()->database()->get_object("model",{id=>$list->[$i]});
-    	if (defined($obj) && defined($mdl)) {
-    		my @rxnList = split(/;/,$obj->inactive().$obj->dead());
-			my $hash;
-			for(my $j=0; $j < @rxnList; $j++) {
-				if (length($rxnList[$j]) > 0) {
-					$hash->{$rxnList[$j]} = 0;
-				}
-			}
-			if (defined($hash->{$mdl->biomassReaction()})) {
-				delete 	$hash->{$mdl->biomassReaction()};
-			}
-			my $finalList;
-			for(my $j=0; $j < @{$priorities}; $j++) {
-				if (defined($hash->{$priorities->[$j]})) {
-					push(@{$finalList},$priorities->[$j]);
-					$hash->{$priorities->[$j]} = 1;
-				}
-			}
-			foreach my $rxn (keys(%{$hash})) {
-				if ($hash->{$rxn} == 0) {
-					push(@{$finalList},$rxn);
-					$hash->{$rxn} = 1;
-				}
-			}
-			push(@{$finalList},$mdl->biomassReaction());
-			if (!-d $Data[2].$list->[$i]) {
-				system("mkdir ".$Data[2].$list->[$i]);
-			}
-			$self->figmodel()->database()->print_array_to_file($Data[2].$list->[$i]."/InactiveReactions.txt",$finalList);
-    	}
-    }
-    return "SUCCESS";
-}
-
 sub schedulegapfill {
 	my($self,@Data) = @_;
-    my $this_command = shift @Data;
+
     #Checking the argument to ensure all required parameters are present
     if (@Data < 2) {
         print "Syntax for this command: schedulegapfill?(Model ID)?(do not clear existing solution)?(print LP file rather than solving).\n\n";
         return "ARGUMENT SYNTAX FAIL";
     }
-    $self->figmodel()->add_job_to_queue({command => "gapfillmodel?".join('?', @Data),queue => "cplex"});
+    $self->figmodel()->add_job_to_queue({command => "gapfillmodel?".$Data[1],queue => "cplex"});
 }
 
 sub buildlinktbl {
@@ -1562,6 +975,9 @@ sub manualgapfill {
 		return "FAIL";
 	}
 	$GapFillResultTable->save($Data[5]);
+	my $ErrorMatrix = $model->TestSolutions(undef,$GapFillResultTable);
+	print join("\n",@{$ErrorMatrix});
+
 	return "SUCCESS";
 }
 
@@ -1719,67 +1135,6 @@ sub rundeletions {
     print "Model deletions successfully completed.\n\n";
 }
 
-sub copymodel {
-	my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 3) {
-        print "Syntax for this command: copymodel?model?new owner?new ID .\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		$mdl->copyModel({newid=>$Data[3],owner=>$Data[2]});
-	}
-	return "SUCCESS";	
-}
-
-sub addright {
-	my($self,@Data) = @_;
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 3) {
-        print "Syntax for this command: copymodel?model?new user .\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		$mdl->changeRight($Data[2],"admin");
-	}
-	return "SUCCESS";	
-}
-
-sub mediageneess {
-    my($self,@Data) = @_;
-
-    #Checking the argument to ensure all required parameters are present
-    if (@Data < 5) {
-        print "Syntax for this command: mediageneess?model?reference media?media list file?Out file.\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $mediaList = $self->figmodel()->database()->load_single_column_file($Data[3],"");
-	my $koList;
-	for (my $i=0; $i < @{$mediaList}; $i++) {
-		$koList->[$i] = "NONE";
-	}
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		my $results = $mdl->fbaMultiplePhenotypeStudy({
-			"mediaList"=>$mediaList,
-			"labels"=>$mediaList,
-			"KOlist"=>$koList,
-			media=>$Data[2],
-			additionalParameters=>{"Combinatorial deletions"=>"1"}
-		});
-		my $output = ["Media\tDependant genes"];
-		foreach my $media (keys(%{$results})) {
-			if (defined($results->{$media}->{dependantGenes})) {
-				push(@{$output},$media."\t".join(",",@{$results->{$media}->{dependantGenes}}));
-			}
-		}
-		$self->figmodel()->database()->print_array_to_file($Data[4],$output);
-	}
-	return "SUCCESS";
-}
-
 sub installdb {
     my($self,@Data) = @_;
 
@@ -1812,30 +1167,14 @@ sub getgapfillingdependancy {
     }
     my $List = [$Data[1]];
     if ($Data[1] =~ m/LIST-(.+)$/) {
-        $List = $self->figmodel()->database()->load_single_column_file($1,"");
-    }
-    if (@{$List} == 1) {
-    	my $mdl = $self->figmodel()->get_model($List->[0]);
-    	if (defined($mdl) && $mdl->ppo()->growth() > 0) {
-	    	my $result = $mdl->fbaTestGapfillingSolution();
-			foreach my $lbl (keys(%{$result})) {
-				if (defined($result->{$lbl}->{noGrowthCompounds}->[0])) {
-					print $lbl."\t".join(",",@{$result->{$lbl}->{noGrowthCompounds}})."\n";
-				}
-				if (defined($result->{$lbl}->{dependantReactions}->[0])) {
-					print $lbl."\t".join(",",@{$result->{$lbl}->{dependantReactions}})."\n";
-				}
-			}
-    	}
-		return "SUCCESS";
+        $List = FIGMODEL::LoadSingleColumnFile($1,"");
     }
     for (my $i=0; $i < @{$List}; $i++) {
 		my $mdl = $self->figmodel()->get_model($List->[$i]);
-		if (defined($mdl) && $mdl->ppo()->growth() > 0) {
-			$self->figmodel()->add_job_to_queue({command => "getgapfillingdependancy?".$List->[$i],user => "chenry",queue => "fast"});
+		if (defined($mdl)) {
+			$mdl->IdentifyDependancyOfGapFillingReactions();
 		}
-    }
-    return "SUCCESS";
+	}
 }
 
 sub runmfa {
@@ -2426,46 +1765,6 @@ sub checkbroadessentiality {
     $self->figmodel()->CheckReactionEssentiality($Data[1],$Data[2],$Data[3]);
 }
 
-sub checksbmlfile {
-    my($self,@Data) = @_;
-    if (@Data < 2) {
-		print "Syntax for this command: checksbmlfile?(model).\n\n";
-		return "ARGUMENT SYNTAX FAIL";
-    }
-    my $mdl = $self->figmodel()->get_model($Data[1]);
- 	my $results = $mdl->getSBMLFileReactions({});
- 	my $output;
- 	if (defined($results->{SBMLreactons})) {
-	 	my $line = "SBML reactions:";
-	 	foreach my $key (keys(%{$results->{SBMLreactons}})) {
-	 		$line .= $key.";";
-	 	}
-	 	push(@{$output},$line);
- 	}
- 	if (defined($results->{SBMLcompounds})) {
-	 	my $line = "SBML compounds:";
-	 	foreach my $key (keys(%{$results->{SBMLcompounds}})) {
-	 		$line .= $key.";";
-	 	}
-	 	push(@{$output},$line);
- 	}
- 	if (defined($results->{missingReactons})) {
-	 	my $line = "Missing reactions:";
-	 	foreach my $key (keys(%{$results->{missingReactons}})) {
-	 		$line .= $key.";";
-	 	}
-	 	push(@{$output},$line);
- 	}
- 	if (defined($results->{missingCompounds})) {
-	 	my $line = "Missing compounds:";
-	 	foreach my $key (keys(%{$results->{missingCompounds}})) {
-	 		$line .= $key.";";
-	 	}
-	 	push(@{$output},$line);
- 	}
- 	$self->figmodel()->database()->print_array_to_file("/home/chenry/SBMLtext.txt",$output);
-}
-
 sub gathersbmlfiles {
     my($self) = @_;
     my $mdlObjs = $self->figmodel()->database()->get_objects("model",{public=>1});
@@ -2626,18 +1925,18 @@ sub deleteoldfiles {
 		print "Syntax for this command: deleteoldfiles?(directory)?(max age).\n\n";
 		return "ARGUMENT SYNTAX FAIL";
     }
+
     my @FileList = glob($Data[1]."*");
     for (my $i=0; $i < @FileList; $i++) {
-		my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat($FileList[$i]);
-		if ((time() - $mtime) > 3600*$Data[2]) {
-			if (-d $FileList[$i]) {
-				system("rm -rf ".$FileList[$i]);
-			} else {
-				#system("cp /dev/null ".$FileList[$i]);
-				unlink($FileList[$i]);
-			}
-		}
-	}
+        my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat($FileList[$i]);
+        if ((time() - $mtime) > 3600*$Data[2]) {
+            if (-e $FileList[$i]) {
+                unlink($FileList[$i]);
+            } else {
+                system("rm -rf ".$FileList[$i]);
+            }
+        }
+    }
 }
 
 sub addstoichcorrection {
@@ -2829,28 +2128,8 @@ sub runmfalite {
 
 sub test {
     my($self,@Data) = @_;
-    my $hash;
-    my $data = $self->figmodel()->database()->load_single_column_file("/home/chenry/GeneMappings/SEED-INRATranslation.txt","");
-    for (my $i=1; $i < @{$data}; $i++) {
-    	my @array = split(/\t/,$data->[$i]);
-    	$hash->{$array[0]} = $array[1];
-    }
-    $data = $self->figmodel()->database()->load_single_column_file("/home/chenry/GeneMappings/GeneAssociations.txt","");
-    for (my $i=1; $i < @{$data}; $i++) {
-    	my @array = split(/\|/,$data->[$i]);
-    	for (my $j=0; $j < @array; $j++) {
-    		my @arraytwo = split(/\+/,$array[$j]);
-    		for (my $k=0; $k < @arraytwo; $k++) {
-    			if (defined($hash->{$arraytwo[$k]})) {
-    				$arraytwo[$k] = $hash->{$arraytwo[$k]};
-    			}
-    		}
-    		$array[$j] = join("+",@arraytwo);
-    	}
-    	$data->[$i] = join("|",@array);
-    }
-    $self->figmodel()->database()->print_array_to_file("/home/chenry/GeneMappings/NewGeneAssociations.txt",$data);
-    return "SUCCESS";
+	my $fbamodel = ModelSEED::FBAMODEL->new();
+	$fbamodel->test();
 }
 
 sub addmapping {
@@ -3313,31 +2592,9 @@ sub runjosescript {
 
 sub patchmodels {
 	my($self,@Data) = @_;
-	my $results = $self->figmodel()->processIDList({
-		objectType => "model",
-		delimiter => ",",
-		column => "id",
-		parameters => {},
-		input => $Data[1]
-	});
-	if (defined($results->{error})) {
-		return "FIALED:".$results->{error};	
-	}
-	if (@{$results->{list}} == 1) {
-		my $mdl = $self->figmodel()->get_model($results->{list}->[0]);
-		if (defined($mdl)) {
-			$mdl->patch_model();	
-		}
-		return "SUCCESS";	
-	} else {
-		for (my $i=0; $i < @{$results->{list}}; $i++) {
-			$self->figmodel()->add_job_to_queue({
-				command => "patchmodels?".$results->{list}->[$i],
-				queue => "fast",
-				priority => 3
-			});
-		}
-	}
+	shift(@Data);
+	my $modelList = [@Data];
+	$self->figmodel()->patch_models($modelList);
 }
 
 sub modelfunction {
@@ -3346,6 +2603,33 @@ sub modelfunction {
 	my $function = shift(@Data);
 	my $modelList = [@Data];
 	$self->figmodel()->call_model_function($function,$modelList);
+}
+
+sub comparemodelgenes {
+	my($self,@Data) = @_;
+
+	if (@Data < 3) {
+        print "Syntax for this command: comparemodelgenes?(model one)?(model two)\n\n";
+        return "ARGUMENT SYNTAX FAIL";
+    }
+	$self->figmodel()->CompareModelGenes($Data[1],$Data[2]);
+}
+
+sub comparemodelreactions {
+	my($self,@Data) = @_;
+
+	if (@Data < 3) {
+        print "Syntax for this command: comparemodelreactions?(model one)?(model two)\n\n";
+        return "ARGUMENT SYNTAX FAIL";
+    }
+	my ($CommonReactions,$EquivalentAReactions,$EquivalentBReactions,$ModelAReactions,$ModelBReactions) = $self->figmodel()->CompareModelReactions($Data[1],$Data[2]);
+	my $output;
+	push(@{$output},"Common reactions:".join(",",keys(%{$CommonReactions})));
+	push(@{$output},$Data[1]." reactions:".join(",",keys(%{$ModelAReactions})));
+	push(@{$output},$Data[2]." reactions:".join(",",keys(%{$ModelBReactions})));
+	push(@{$output},$Data[1]." reactions:".join(",",keys(%{$EquivalentAReactions})));
+	push(@{$output},$Data[2]." reactions:".join(",",keys(%{$EquivalentBReactions})));
+	$self->figmodel()->database()->print_array_to_file($self->figmodel()->config("database message file directory")->[0].$Data[1]."-".$Data[2]."-ReactionComparison.tbl",$output);
 }
 
 sub searchgenomeforfeatures {
@@ -3800,46 +3084,95 @@ sub translatelocations {
 
 sub printconversiontables {
 	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: printconversiontables?(directory)?(file 1)?(file 2)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    #Loading sets from file
+	my $inputList = $self->figmodel()->database()->load_single_column_file("/home/chenry/translations.txt","");
 	my $sets;
-	for (my $i=2; $i < @Data; $i++) {
-		my $setdata = $self->figmodel()->database()->load_single_column_file($Data[1].$Data[$i],"");
-		my $setID = $setdata->[0];
-		for (my $j=1; $j < @{$setdata}; $j++) {
-			my @tempArray = split(/\t/,$setdata->[$j]);
-			$sets->{$setID}->{$tempArray[0]}->[0] = $tempArray[1];
-			$sets->{$setID}->{$tempArray[0]}->[1] = $tempArray[2];
+	my $allheadings;
+	my $setID;
+	my @setHeadings;
+	print "Reading input\n";
+	for (my $i=0; $i < @{$inputList}; $i++) { 
+		if ($inputList->[$i] =~ m/NEWSET:(.+)/) {
+			$setID = $1;
+			$i++;
+			push(@{$allheadings->{$setID}},split(/\t/,$inputList->[$i]));
+		} else {
+			my @data = split(/\t/,$inputList->[$i]);
+			my $newItem;
+			for (my $j=0; $j < @data; $j++) {
+				$newItem->{$allheadings->{$setID}->[$j]} = $data[$j];
+			}
+			push(@{$sets->{$setID}},$newItem);
 		}
 	}
-	#Comparing sets
-	my $setList = [keys(%{$sets})];
-	for (my $i=0; $i < @{$setList}; $i++) {
-		for (my $j=0; $j < @{$setList}; $j++) {
-			if ($i != $j) {
-				print $i."\t".$j."\n";
-				my $output = [$setList->[$i]."\t".$setList->[$j]."\tOverlap"];
-				my @one = keys(%{$sets->{$setList->[$i]}});
-				my @two = keys(%{$sets->{$setList->[$j]}});
-				for (my $k=0; $k < @one; $k++) {
-					for (my $m=0; $m < @two; $m++) {
-						if ($sets->{$setList->[$i]}->{$one[$k]}->[1] > $sets->{$setList->[$j]}->{$two[$m]}->[0]) {
-							if ($sets->{$setList->[$i]}->{$one[$k]}->[0] < $sets->{$setList->[$j]}->{$two[$m]}->[1]) {
-								my $overlap = $sets->{$setList->[$i]}->{$one[$k]}->[1] - $sets->{$setList->[$j]}->{$two[$m]}->[0];
-								if (($sets->{$setList->[$j]}->{$two[$m]}->[1] - $sets->{$setList->[$i]}->{$one[$k]}->[0]) < $overlap) {
-									$overlap = $sets->{$setList->[$j]}->{$two[$m]}->[1] - $sets->{$setList->[$i]}->{$one[$k]}->[0];
+	print "Comparing lists\n";
+	my @setList = keys(%{$sets});
+	for (my $i=0; $i < @setList; $i++) {
+		print $i."\n";
+		for (my $k=0; $k < @{$sets->{$setList[$i]}}; $k++) {
+			if (defined($sets->{$setList[$i]}->[$k]->{start}) && defined($sets->{$setList[$i]}->[$k]->{stop})) {
+				for (my $j=0; $j < @setList; $j++) {
+					if ($i != $j) {
+						for (my $m=0; $m < @{$sets->{$setList[$j]}}; $m++) {
+							if (defined($sets->{$setList[$j]}->[$m]->{start}) && defined($sets->{$setList[$j]}->[$m]->{stop})) {
+								if ($sets->{$setList[$j]}->[$m]->{start} <= $sets->{$setList[$i]}->[$k]->{stop} && $sets->{$setList[$j]}->[$m]->{stop} >= $sets->{$setList[$i]}->[$k]->{start}) {
+									for (my $n=0; $n < @{$allheadings->{$setList[$j]}}; $n++) {
+										if ($allheadings->{$setList[$j]}->[$n] ne "start" && $allheadings->{$setList[$j]}->[$n] ne "stop") {
+											if (defined($sets->{$setList[$j]}->[$m]->{$allheadings->{$setList[$j]}->[$n]}) && length($sets->{$setList[$j]}->[$m]->{$allheadings->{$setList[$j]}->[$n]}) > 0) {
+												if (defined($sets->{$setList[$i]}->[$k]->{$setList[$j]." ".$allheadings->{$setList[$j]}->[$n]})) {
+													$sets->{$setList[$i]}->[$k]->{$setList[$j]." ".$allheadings->{$setList[$j]}->[$n]} .= "|".$sets->{$setList[$j]}->[$m]->{$allheadings->{$setList[$j]}->[$n]};
+												} else {
+													$sets->{$setList[$i]}->[$k]->{$setList[$j]." ".$allheadings->{$setList[$j]}->[$n]} = $sets->{$setList[$j]}->[$m]->{$allheadings->{$setList[$j]}->[$n]};	
+												}
+											}
+										}
+									}
 								}
-								push(@{$output},$one[$k]."\t".$two[$m]."\t".$overlap);
 							}
 						}
 					}
 				}
-				$self->figmodel()->database()->print_array_to_file($Data[1]."/".$setList->[$i]."-".$setList->[$j].".txt",$output);
 			}
 		}
+	}
+	print "Printing results\n";
+	for (my $i=0; $i < @setList; $i++) {
+		print $i."\n";
+		open( OUT, ">/home/chenry/Sets".$setList[$i].".txt") || die "could not open";
+		for (my $n=0; $n < @{$allheadings->{$setList[$i]}}; $n++) {
+			print OUT $allheadings->{$setList[$i]}->[$n]."\t";
+		}
+		for (my $j=0; $j < @setList; $j++) {
+			if ($i != $j) {
+				for (my $n=0; $n < @{$allheadings->{$setList[$j]}}; $n++) {
+					if ($allheadings->{$setList[$j]}->[$n] ne "start" && $allheadings->{$setList[$j]}->[$n] ne "stop") {
+						print OUT $setList[$j]." ".$allheadings->{$setList[$j]}->[$n]."\t";
+					}
+				}
+			}
+		}
+		print OUT "\n";
+		for (my $k=0; $k < @{$sets->{$setList[$i]}}; $k++) {
+			for (my $n=0; $n < @{$allheadings->{$setList[$i]}}; $n++) {
+				if (defined($sets->{$setList[$i]}->[$k]->{$allheadings->{$setList[$i]}->[$n]})) {
+					print OUT $sets->{$setList[$i]}->[$k]->{$allheadings->{$setList[$i]}->[$n]};
+				}
+				print OUT "\t";
+			}
+			for (my $j=0; $j < @setList; $j++) {
+				if ($i != $j) {
+					for (my $n=0; $n < @{$allheadings->{$setList[$j]}}; $n++) {
+						if ($allheadings->{$setList[$j]}->[$n] ne "start" && $allheadings->{$setList[$j]}->[$n] ne "stop") {
+							if (defined($sets->{$setList[$i]}->[$k]->{$setList[$j]." ".$allheadings->{$setList[$j]}->[$n]})) {
+								print OUT $sets->{$setList[$i]}->[$k]->{$setList[$j]." ".$allheadings->{$setList[$j]}->[$n]};
+							}
+							print OUT "\t";
+						}
+					}
+				}
+			}
+			print OUT "\n";
+		}
+		close(OUT);
 	}
 }
 
@@ -3907,14 +3240,10 @@ sub setupgenecallstudy {
 			$geneCalls->{$array[0]} = $array[1];
 		}
 	}
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		my $fbaObj = $mdl->fba({media => $Data[2]});
-		$fbaObj->filename(1);
-		$fbaObj->setGeneActivityAnalysis({geneCalls => $geneCalls});
-		my $output = $fbaObj->queueFBAJob();
-		print "Job ID:".$output->{jobid}."\n";
-	}
+	my $fbaObj = ModelSEED::FIGMODEL::FIGMODELfba->new({figmodel => $self->figmodel(),model => $Data[1],media => $Data[2],parameter_files=>["ProductionMFA"]});
+	$fbaObj->setGeneActivityAnalysis({geneCalls => $geneCalls});
+	my $output = $fbaObj->queueFBAJob();
+	print "Job ID:".$output->{jobid}."\n";
 	return "SUCCESS";
 }
 
@@ -3924,7 +3253,7 @@ sub runfba {
         print "Syntax for this command: runfba?(filename)\n\n";
         return "ARGUMENT SYNTAX FAIL";
     }
-	my $fbaObj = $self->figmodel()->fba();
+	my $fbaObj = ModelSEED::FIGMODEL::FIGMODELfba->new({figmodel => $self->figmodel()});
 	my $result = $fbaObj->runProblemDirectory({filename => $Data[1]});
 	if (defined($result->{error})) {
 		return "FAILED:".$result->{error};	
@@ -3935,409 +3264,5 @@ sub runfba {
 sub updatecpdnames {
 	my($self) = @_;
 	$self->figmodel()->UpdateCompoundNamesInDB();
-	return "SUCCESS";
-}
-
-sub queueallmodels {
-	my($self,@Data) = @_;
-	if (@Data < 4) {
-        print "Syntax for this command: queueallmodels?(owner)?(queue)?(gapfilling)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $sapObject = $self->figmodel()->sapSvr("PSEED");
-    my $genomeHash = $sapObject->all_genomes(-complete => "TRUE",-prokaryotic => "TRUE");
-    my $array;
-	push(@{$array},keys(%{$genomeHash}));
-	for (my $i=0; $i < @{$array}; $i++) {
-    	$self->figmodel()->createNewModel({-genome => $array->[$i],-queue => $Data[2],-owner => $Data[1],-gapfilling => $Data[3]});
-	}
-	return "SUCCESS";
-}
-
-sub createuniversalbof {
-	my($self) = @_;
-	$self->figmodel()->get_reaction("rxn00001")->build_complete_biomass_reaction({});
-	return "SUCCESS";
-}
-
-sub printdatatables {
-	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: printdatatables?(output directory)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $output = ["ModelID\tName\tGenomeID\tGrowth\tGenes\tReactions\tGapfilled reactions"];
-	my $objs = $self->figmodel()->database()->get_objects("model",{public => 1});
-	for (my $i=0; $i < @{$objs}; $i++) {
-		push(@{$output},$objs->[$i]->id()."\t".$objs->[$i]->name()."\t".$objs->[$i]->genome()."\t".$objs->[$i]->growth()."\t".$objs->[$i]->associatedGenes()."\t".$objs->[$i]->reactions()."\t".$objs->[$i]->autoCompleteReactions());
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/ModelGenome.txt",$output);
-	$output = ["ModelID\tReactionID\tPegs"];
-	for (my $i=0; $i < @{$objs}; $i++) {
-		my $mdl = $self->figmodel()->get_model($objs->[$i]->id());
-		my $reactionTbl = $mdl->reaction_table();
-		for (my $j=0; $j < $reactionTbl->size(); $j++) {
-			my $row = $reactionTbl->get_row($j);
-			push(@{$output},$objs->[$i]->id()."\t".$row->{LOAD}->[0]."\t".join("|",@{$row->{"ASSOCIATED PEG"}}));	
-		}
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/ModelReaction.txt",$output);
-	$output = ["CompoundID\tName"];
-	$objs = $self->figmodel()->database()->get_objects("cpdals",{type => "name"});
-	for (my $i=0; $i < @{$objs}; $i++) {
-		push(@{$output},$objs->[$i]->COMPOUND()."\t".$objs->[$i]->alias());
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/CompoundName.txt",$output);
-	$output = ["Reaction\tEquation\tName"];
-	$objs = $self->figmodel()->database()->get_objects("reaction");
-	for (my $i=0; $i < @{$objs}; $i++) {
-		#if ($objs->[$i]->id() le "rxn13784") {
-			push(@{$output},$objs->[$i]->id()."\t".$objs->[$i]->equation()."\t".$objs->[$i]->name());
-		#}
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/Reactions.txt",$output);
-	$output = ["CompoundID\tReactionID\tStoichiometry\tCofactor"];
-	my $hash;
-	$objs = $self->figmodel()->database()->get_objects("cpdrxn");
-	for (my $i=0; $i < @{$objs}; $i++) {
-		if ($objs->[$i]->compartment() eq "e") {
-			$hash->{$objs->[$i]->COMPOUND()} = 1;	
-		}
-		push(@{$output},$objs->[$i]->COMPOUND()."\t".$objs->[$i]->REACTION()."\t".$objs->[$i]->coefficient()."\t".$objs->[$i]->cofactor());
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/CompoundReaction.txt",$output);
-	$output = ["Transported CompoundID"];
-	push(@{$output},keys(%{$hash}));
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/TransportedCompounds.txt",$output);
-	$output = ["ReactionID\tRole"];
-	my $roleHash = $self->figmodel()->mapping()->get_role_rxn_hash();
-	foreach my $rxn (keys(%{$roleHash})) {
-		foreach my $role (keys(%{$roleHash->{$rxn}})) {
-			push(@{$output},$rxn."\t".$roleHash->{$rxn}->{$role}->name());
-		}
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/ReactionRole.txt",$output);
-	$output = ["ReactionID\tSubsystem\tRole"];
-	my $subsysHash = $self->figmodel()->mapping()->get_subsy_rxn_hash();
-	my $subsysHashTwo = $self->figmodel()->mapping()->{_subsysrolerxnhash};
-	foreach my $rxn (keys(%{$subsysHash})) {
-		foreach my $subsys (keys(%{$subsysHash->{$rxn}})) {
-			foreach my $role (keys(%{$subsysHashTwo->{$rxn}->{$subsys}})) {
-				push(@{$output},$rxn."\t".$subsysHash->{$rxn}->{$subsys}->name()."\t".$role);
-			}
-		}
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/ReactionSubsys.txt",$output);
-	$output = ["Role\tSubsystem\tClass 1\tClass 2\tStatus"];
-	$objs = $self->figmodel()->database()->get_objects("subsystem");
-	my $roleObjs = $self->figmodel()->database()->get_objects("role");
-	my $newroleHash;
-	for (my $i=0; $i < @{$roleObjs}; $i++) {
-		$newroleHash->{$roleObjs->[$i]->id()} = $roleObjs->[$i];
-	}
-	for (my $i=0; $i < @{$objs}; $i++) {
-		my $ssroleobjs = $self->figmodel()->database()->get_objects("ssroles",{SUBSYSTEM => $objs->[$i]->id()});
-		for (my $j=0; $j < @{$ssroleobjs}; $j++) {
-			push(@{$output},$newroleHash->{$ssroleobjs->[$j]->ROLE()}->name()."\t".$objs->[$i]->name()."\t".$objs->[$i]->classOne()."\t".$objs->[$i]->classTwo()."\t".$objs->[$i]->status());	
-		}
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[1]."/SubsystemClass.txt",$output);
-	return "SUCCESS";
-}
-
-sub calcminmedia {
-	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: calcminmedia?(model)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my $mdl = $self->figmodel()->get_model($Data[1]);
-	if (defined($mdl)) {
-		my $result = $mdl->fbaCalculateMinimalMedia();
-		if (defined($result->{essentialNutrients}) && defined($result->{optionalNutrientSets}->[0])) {
-			my $count = @{$result->{essentialNutrients}};
-			print "Essential nutrients (".$count."):";
-			for (my $j=0; $j < @{$result->{essentialNutrients}}; $j++) {
-				if ($j > 0) {
-					print ";";
-				}
-				my $cpd = $self->figmodel()->database()->get_object("compound",{id => $result->{essentialNutrients}->[$j]});
-				print $result->{essentialNutrients}->[$j]."(".$cpd->name().")";
-			}
-			print "\n";
-			for (my $i=0; $i < @{$result->{optionalNutrientSets}}; $i++) {
-				my $count = @{$result->{optionalNutrientSets}->[$i]};
-				print "Optional nutrients ".($i+1)." (".$count."):";
-				for (my $j=0; $j < @{$result->{optionalNutrientSets}->[$i]}; $j++) {
-					if ($j > 0) {
-						print ";";	
-					}
-					my $cpd = $self->figmodel()->database()->get_object("compound",{id => $result->{optionalNutrientSets}->[$i]->[$j]});
-					print $result->{optionalNutrientSets}->[$i]->[$j]."(".$cpd->name().")";
-				}
-			}
-			print "\n";
-		}
-	}
-}
-
-sub comparearrays {
-	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: comparearrays?(input file)?(output file)?(type)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-	my ($labels,$data);
-	my $inputArray = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	for (my $i=0; $i < @{$inputArray}; $i++) {
-		my @array = split(/;/,$inputArray->[$i]);
-		push(@{$labels},shift(@array));
-		push(@{$data->[$i]},@array);
-	}
-	my $result = $self->figmodel()->compareArrays({labels => $labels,data => $data,type => $Data[3]});
-	my $output = ["Organism;".join(";",sort(keys(%{$result})))];
-	foreach my $lbl (sort(keys(%{$result}))) {
-		my $line = $lbl;
-		foreach my $lblTwo (sort(keys(%{$result}))) {
-			$line .= ";".$result->{$lbl}->{$lblTwo};
-		}
-		push(@{$output},$line);
-	}
-	$self->figmodel()->database()->print_array_to_file($Data[2],$output);
-}
-
-sub loadcpdppofromfile {
-	my($self,@Data) = @_;
-	if (@Data < 2) {
-        print "Syntax for this command: loadcpdppofromfile?(compound ID)\n\n";
-        return "ARGUMENT SYNTAX FAIL";
-    }
-    my $cpd = $self->figmodel()->get_compound($Data[1]);
-    $cpd->loadPPOFromFile({});
-}
-
-sub parsemetagenomefile {
-	my($self,@Data) = @_;
-    $self->figmodel()->database()->parseMetagenomeDataTable({filename => $Data[1]});
-}
-
-sub loadintervals {
-	my($self,@Data) = @_;
-	if ($self->check(["filename","genome"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $input = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	my $ftrobjs = $self->figmodel()->database()->get_objects("strFtr");
-	for (my $i=1; $i < @{$input}; $i++) {
-		my @array = split(/\t/,$input->[$i]);
-		my $obj = $self->figmodel()->database()->get_object("strInt",{id => "fig|".$Data[2].".".$array[0]});
-		if (!defined($obj)) {
-			$obj = $self->figmodel()->database()->create_object("strInt",{
-				id => "fig|".$Data[2].".".$array[0],
-				start => $array[1],
-				stop => $array[2],
-				owner => $array[3],
-				public => $array[4],
-				modificationDate => $self->figmodel()->timestamp(),
-				creationDate => $self->figmodel()->timestamp()
-			});
-		}
-		for (my $j=0; $j < @{$ftrobjs}; $j++) {
-			if ($array[1] < $ftrobjs->[$j]->stop() && $array[2] > $ftrobjs->[$j]->start()) {
-				my $obj = $self->figmodel()->database()->get_object("strIntFtr",{FEATURE => $ftrobjs->[$j]->id(),CONTIG => "fig|".$Data[2].".".$array[0]});				
-				if (!defined($obj)) {
-					$obj = $self->figmodel()->database()->create_object("strIntFtr",{
-						FEATURE => $ftrobjs->[$j]->id(),
-						CONTIG => "fig|".$Data[2].".".$array[0]
-					});
-				}
-			}
-		}
-	}
-	return "SUCCESS";
-}
-
-sub loadalias {
-	my($self,@Data) = @_;
-	if ($self->check(["filename","alias type","target database"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $input = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	for (my $i=1; $i < @{$input}; $i++) {
-		my @array = split(/\t/,$input->[$i]);
-		if ($Data[3] eq "STRAINDB") {
-			my $obj = $self->figmodel()->database()->get_object("strFtrAls",{
-				FEATURE => $array[0],
-				type => $Data[2],
-				alias => $array[1]
-			});
-			if (!defined($obj)) {
-				$self->figmodel()->database()->create_object("strFtrAls",{
-					FEATURE => $array[0],
-					type => $Data[2],
-					alias => $array[1]
-				});
-			}
-		}
-	}
-	return "SUCCESS";
-}
-
-sub loadfeatures {
-	my($self,@Data) = @_;
-	if ($self->check(["genome"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $genomeObj = $self->figmodel()->get_genome($Data[1]);
-	if (defined($genomeObj)) {
-		my $ftrs = $genomeObj->feature_table();
-		for (my $i=1; $i < $ftrs->size(); $i++) {
-			my $row = $ftrs->get_row($i);
-			my $obj = $self->figmodel()->database()->get_object("strFtr",{id => $row->{ID}->[0]});				
-			if (!defined($obj)) {
-				$self->figmodel()->database()->create_object("strFtr",{
-					id => $row->{ID}->[0],
-					start => $row->{"MIN LOCATION"}->[0],
-					stop => $row->{"MAX LOCATION"}->[0],
-					type => $row->{"TYPE"}->[0],
-					annotation => join("|",@{$row->{ROLES}}),
-				});
-			}
-		}
-		return "SUCCESS";
-	}
-	return "FAIL";
-}
-
-sub loadstrains {
-	my($self,@Data) = @_;
-	if ($self->check(["filename","genome"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $input = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	my $intervalHash;
-	for (my $i=1; $i < @{$input}; $i++) {
-		my @array = split(/\t/,$input->[$i]);
-		my $parent = "unknown";
-		my $lineage = "unknown";
-		my @intArray = split(/\|/,$array[1]);
-		if (@intArray == 1) {
-			$parent = "wildtype";
-			$lineage = "none";
-		} else {
-			my $list = "";
-			for (my $j=0; $j < @intArray; $j++) {
-				if ($j > 0) {
-					$list .= "|";	
-				}
-				$list .= $intArray[$j];
-				if (defined($intervalHash->{$list})) {
-					$parent = $intervalHash->{$list};
-					if ($lineage eq "unknown") {
-						$lineage = "";
-					} else {
-						$lineage .= ";";	
-					}
-					$lineage .= $parent;
-				}
-			}
-			$intervalHash->{$list} = "fig|".$Data[2].".".$array[0];
-		}
-		my $obj = $self->figmodel()->database()->get_object("strStrain",{id => "fig|".$Data[2].".".$array[0]});
-		if (!defined($obj)) {
-			$obj = $self->figmodel()->database()->create_object("strStrain",{
-				id => "fig|".$Data[2].".".$array[0],
-				parent => $parent,
-				lineage => $lineage,
-				method => $array[2],
-				competance => $array[3],
-				resistance => $array[4],
-				strainAttempted => $array[5],
-				strainImplemented => $array[6],
-				EXPERIMENTER => $array[7],
-				creationDate => $self->figmodel()->timestamp(),
-				modificationDate => $self->figmodel()->timestamp(),
-				experimentDate => $self->figmodel()->timestamp(),
-				owner => $array[8],
-				public => $array[9]
-			});
-		}
-		for (my $j=0; $j < @intArray; $j++) {
-			my $obj = $self->figmodel()->database()->get_object("strStrInt",{
-				STRAIN => "fig|".$Data[2].".".$array[0],
-				CONTIG => "fig|".$Data[2].".".$intArray[$j],
-				deletionOrder => $j+1
-			});
-			if (!defined($obj)) {
-				$obj = $self->figmodel()->database()->create_object("strStrInt",{
-					STRAIN => "fig|".$Data[2].".".$array[0],
-					CONTIG => "fig|".$Data[2].".".$intArray[$j],
-					deletionOrder => $j+1
-				});
-			}
-		}
-	}
-	return "SUCCESS";
-}
-
-sub loadphenotypes {
-	my($self,@Data) = @_;
-	if ($self->check(["filename","genome"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $input = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	for (my $i=1; $i < @{$input}; $i++) {
-		my @array = split(/\t/,$input->[$i]);
-		my $objs = $self->figmodel()->database()->get_objects("strStrInt",{deletionOrder => "1",CONTIG => "fig|".$Data[2].".i".$array[0]});
-		my $strain;
-		for (my $i=0; $i < @{$objs}; $i++) {
-			$strain = $self->figmodel()->database()->get_object("strStrain",{id => $objs->[$i]->STRAIN(),parent => "wildtype"});
-			if (defined($strain)) {
-				last;
-			}
-		}
-		if (defined($strain)) {
-			my $obj = $self->figmodel()->database()->get_object("strPheno",{STRAIN => $strain->id(),MEDIA => $array[2]});
-			if (!defined($obj)) {
-				$obj = $self->figmodel()->database()->create_object("strPheno",{
-					STRAIN => $strain->id(),
-					MEDIA => $array[2],
-					EXPERIMENTER => "ktanaka",
-					relativeGrowth => $array[3],
-					description => "none",
-					creationDate => $self->figmodel()->timestamp(),
-					modificationDate => $self->figmodel()->timestamp()
-				});
-			}
-		} else {
-			print "Could not find strain for ".$array[0]."\n";
-		}
-	}
-	return "SUCCESS";
-}
-
-sub loadpredictions {
-	my($self,@Data) = @_;
-	if ($self->check(["filename","genome","model"],@Data) == 0) {return "ARGUMENT SYNTAX FAIL";}
-	my $input = $self->figmodel()->database()->load_single_column_file($Data[1],"");
-	for (my $i=1; $i < @{$input}; $i++) {
-		my @array = split(/\t/,$input->[$i]);
-		my $objs = $self->figmodel()->database()->get_objects("strStrInt",{deletionOrder => "1",CONTIG => "fig|".$Data[2].".i".$array[0]});
-		my $strain;
-		for (my $i=0; $i < @{$objs}; $i++) {
-			$strain = $self->figmodel()->database()->get_object("strStrain",{id => $objs->[$i]->STRAIN(),parent => "wildtype"});
-			if (defined($strain)) {
-				last;
-			}
-		}
-		if (defined($strain)) {
-			my $obj = $self->figmodel()->database()->get_object("strPred",{version => 0,MODEL => $Data[3],STRAIN => $strain->id(),MEDIA => $array[2]});
-			if (!defined($obj)) {
-				$obj = $self->figmodel()->database()->create_object("strPred",{
-					STRAIN => $strain->id(),
-					MEDIA => $array[2],
-					MODEL => $Data[3],
-					version => 0,
-					relativeGrowth => $array[7],
-					noGrowthCompounds => "none",
-					description => "none",
-					creationDate => $self->figmodel()->timestamp(),
-					modificationDate => $self->figmodel()->timestamp()
-				});
-			}
-		} else {
-			print "Could not find strain for ".$array[0]."\n";
-		}
-	}
 	return "SUCCESS";
 }

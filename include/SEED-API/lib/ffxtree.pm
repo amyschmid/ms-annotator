@@ -200,10 +200,10 @@ sub tree_with_fasttree {
                                                 : gjophylip::process_dna_alignment($ali);
 
     my $tmpdir  = SeedAware::location_of_tmp($opts);
-    my $tmpin   = SeedAware::new_file_name("$tmpdir/input_for_fasttree$$", 'fasta');
-    my $tmptree = SeedAware::new_file_name("$tmpdir/fasttree$$", 'newick');
-    my $tmptr2  = SeedAware::new_file_name("$tmpdir/fasttree_intree$$", 'newick');
-    my $tmplog  = SeedAware::new_file_name("$tmpdir/fasttree$$", 'log');
+    my $tmpin   = SeedAware::new_file_name("$tmpdir/input_for_fasttree", 'fasta');
+    my $tmptree = SeedAware::new_file_name("$tmpdir/fasttree", 'newick');
+    my $tmptr2  = SeedAware::new_file_name("$tmpdir/fasttree_intree", 'newick');
+    my $tmplog  = SeedAware::new_file_name("$tmpdir/fasttree", 'log');
 
     gjoseqlib::print_alignment_as_fasta($tmpin, $ali2);
 
@@ -216,14 +216,9 @@ sub tree_with_fasttree {
 
     $flags->{nt}      = 1      if $type eq 'n';
     $flags->{gamma}   = 1      if $opts->{rate}   =~ /Gamma/i;
-    $flags->{nome}    = 1      if $opts->{nome};
-    $flags->{noml}    = 1      if $opts->{noml};
-    $flags->{mllen}   = 1      if $opts->{mllen};
-
     $vals->{spr}    ||= 4      if $opts->{search} =~ /SPR/i;
     $vals->{spr}      = undef  if $opts->{search} =~ /NNI/i;
     $vals->{cat}    ||= $opts->{nclasses} || 20;
-
 
     if (($opts->{optimize} =~ /eval/i || $opts->{eval}) && $opts->{input}) {
         my $tr2 = read_tree($opts->{input});
@@ -240,8 +235,8 @@ sub tree_with_fasttree {
 
     my $fasttree = SeedAware::executable_for($opts->{fasttree} || $opts->{program} || 'fasttree');
 
-    # print STDERR join(" ", $fasttree, @params, $tmpin). "\n";
     SeedAware::system_with_redirect($fasttree, @params, $tmpin, { stdout => $tmptree, stderr => $tmplog });
+    # print STDERR join(" ", $fasttree, @params, $tmpin). "\n";
 
     my $tree = gjonewicklib::read_newick_tree($tmptree);
     my $info = SeedAware::slurp_input($tmplog);
@@ -304,9 +299,9 @@ sub tree_with_phyml {
                                                 : gjophylip::process_dna_alignment($ali);
 
     my $tmpdir  = SeedAware::location_of_tmp($opts);
-    my $tmpin   = SeedAware::new_file_name("$tmpdir/input_for_phyml$$", 'phylip');
-    my $tmptr2  = SeedAware::new_file_name("$tmpdir/phyml_intree$$", 'newick');
-    my $tmplog  = SeedAware::new_file_name("$tmpdir/phyml$$", 'log');
+    my $tmpin   = SeedAware::new_file_name("$tmpdir/input_for_phyml", 'phylip');
+    my $tmptr2  = SeedAware::new_file_name("$tmpdir/phyml_intree", 'newick');
+    my $tmplog  = SeedAware::new_file_name("$tmpdir/phyml", 'log');
     my $tmptree = "$tmpin\_phyml_tree.txt"; # PHYML hard-coded output tree
     my $tmplog2 = "$tmpin\_phyml_stats.txt"; # PHYML hard-coded stats file
 
@@ -504,8 +499,8 @@ sub tree_with_raxml {
     }
 
     gjonewicklib::newick_relabel_nodes($tree, $id);
-    gjonewicklib::writeNewickTree($tree, $opts->{treefile})    if $opts->{treefile};
-    AlignTree::print_string($opts->{logfile}, "$info\n$info2") if $opts->{logfile};
+    gjonewicklib::writeNewickTree($tree, $opts->{treefile})    if $stats->{treefile};
+    AlignTree::print_string($opts->{logfile}, "$info\n$info2") if $stats->{logfile};
 
     my @tmpfiles = map { "$tmpdir/RAxML_$_.$tmpkey" }
         qw(result info log);
@@ -593,25 +588,15 @@ sub trim_timestr { seconds_to_timestr(timestr_to_seconds(shift)) }
 #
 #  Options:
 #
-#    cg_cutoff       =>  $threshold     # collapse subtrees whose root branch has
+#    cg_cutoff    =>  $threshold     # collapse subtrees whose root branch has
 #                                      support values greater than cutoff (D = 0.85)
-#    max_fract       =>  fraction       # max fraction of a cohesion group (D = 0.50)
-#    max_cg_size     =>  cg_size        # max size of a cohesion group (D = unlimited)
-#    show_orphan     =>  bool           # label all orphan cohension groups as 'Orp'
-#    single_collpase =>  bool           # no more than one collapse;
-#                                         first collpase the largest one within the size limit above bootstrap level 
+#    show_orphan  =>  bool           # label all orphan cohension groups as 'Orp'
 #
 #  Based on Roy A. Jensen's cohesion group method (PubMed ID: 18322033)
 #    
 #-----------------------------------------------------------------------------
 sub make_cohesion_groups {
     my ($tree, $opts) = @_;
-
-    my @tips  = gjonewicklib::newick_tip_list($tree);
-    my $fract = $opts->{max_fract} || $opts->{max_cg_fraction}  || 0.50;
-    my $maxcg = $opts->{max_cg}    || $opts->{max_cg_size}      || scalar @tips;
-    
-    $opts->{max_cg_size} = SeedUtils::min(@tips * $fract, $maxcg);
     
     make_cohesion_groups_helper($tree, $opts);
 
@@ -642,15 +627,12 @@ sub make_cohesion_groups_helper {
     my ($node, $opts) = @_;
 
     my $cutoff = $opts->{cg_cutoff} || $opts->{cohesion_group_cutoff} || 0.85;
-    my $maxcg  = $opts->{max_cg}    || $opts->{max_cg_size};
-
+    
     my @desc  = gjonewicklib::newick_desc_list($node);
     my $label = gjonewicklib::newick_lbl($node);
 
     if (@desc) {
-        # print STDERR "ndesc = ". scalar@desc."\t b = ". $label."\t maxcg = $maxcg\n";
-        my @tips = gjonewicklib::newick_tip_list($node);
-        if ($label && $label >= $cutoff && (!$maxcg || @tips <= $maxcg)) {
+        if ($label && $label >= $cutoff) {
             my @tips = gjonewicklib::newick_tip_list($node);
             my $group = ++$opts->{cohesion_group_total};
             for (@tips) {
@@ -664,102 +646,6 @@ sub make_cohesion_groups_helper {
         my $group = ++$opts->{cohesion_group_total};
         $opts->{cohesion_group}->{$label} = $group;
         $opts->{cohesion_group_count}->{$group}++;
-    }
-}
-
-
-#-----------------------------------------------------------------------------
-#  Tree-based similarity calculation 
-#
-#-----------------------------------------------------------------------------
-
-sub tip_to_tip_distances {
-    my ($tree) = @_;
-
-    my ($dist, $height) = ({}, {});
-    
-    tip_to_tip_distances_helper($tree, $dist, $height);
-
-    return $dist;
-}
-
-sub tip_to_tip_distances_helper {
-    my ($node, $dist, $height) = @_;
-
-    my @lbls;
-
-    my @desc = gjonewicklib::newick_desc_list( $node );
-    
-    if (@desc) {
-        my @brlbls;
-        foreach (@desc) {
-            my $x   = gjonewicklib::newick_x($_);
-            my @lbl = tip_to_tip_distances_helper($_, $dist, $height);
-            for my $tip (@lbl) { $height->{$tip} += $x }
-            push @brlbls, \@lbl;
-            push @lbls, @lbl;
-        }
-        my $n = $#brlbls;
-        for my $i (0 .. $n-1) {
-            for my $j ($i+1 .. $n) {
-                for my $x (@{$brlbls[$i]}) {
-                    for my $y (@{$brlbls[$j]}) {
-                        $dist->{"$x,$y"}  = $dist->{"$y,$x"}  = $height->{$x} + $height->{$y};
-                        $dist->{$x}->{$y} = $dist->{$y}->{$x} = $height->{$x} + $height->{$y};
-                    }
-                }
-            }
-        }
-        return @lbls;
-    } else {
-        my $lbl = gjonewicklib::newick_lbl($node);
-        $height->{$lbl} = 0;
-        return $lbl;
-    }
-}
-
-
-sub distances_from_tip {
-    my ($tree, $tip) = @_;
-
-    my ($dist, $height) = ({}, {});
-    
-    distances_from_tip_helper($tree, $tip, $dist, $height);
-
-    return $dist;
-}
-
-sub distances_from_tip_helper {
-    my ($node, $tip, $dist, $height) = @_;
-
-    my @lbls;
-
-    my @desc = gjonewicklib::newick_desc_list( $node );
-    
-    if (@desc) {
-        my $desc_has_tip;
-        my @tips_to_update;
-        foreach (@desc) {
-            my $x   = gjonewicklib::newick_x($_);
-            my @lbl = distances_from_tip_helper($_, $tip, $dist, $height);
-            my $has_tip;
-            for (@lbl) {
-                $height->{$_} += $x;
-                $has_tip = $desc_has_tip = 1 if $_ eq $tip;
-            }
-            push @tips_to_update, @lbl unless $has_tip;
-            push @lbls, @lbl;
-        }
-        if ($desc_has_tip) {
-            for (@tips_to_update) {
-                $dist->{$_} = $height->{$_} + $height->{$tip};
-            }
-        }
-        return @lbls;
-    } else {
-        my $lbl = gjonewicklib::newick_lbl($node);
-        $height->{$lbl} = 0;
-        return $lbl;
     }
 }
 
@@ -841,7 +727,6 @@ sub read_set {
 #     nc            => $n                     # maximum number of colors (D = 10)
 #     popup         => \%id_to_popup          # mouseovers for tips:             
 #                                               to appear in 'Description' field of tip popup window
-#     popup_field   => $str                   # popup field name (D = 'Description')
 #     raw           => bool                   # paint the original tree
 #     title         => $str                   # title for HTML page
 #
@@ -1217,7 +1102,7 @@ sub collapse_tree_by_group {
         collapse_tree_by_group_undecorate($tree, $opts);
 
         my @keep = keys %{$opts->{collapse_keep}} if $opts->{collapse_keep};
-        $tree = gjonewicklib::rooted_newick_subtree($tree, @keep);
+        $tree = gjonewicklib::newick_subtree($tree, @keep);
     }
     
     return $tree;
@@ -1337,7 +1222,7 @@ sub fix_tip_links {
         my $peg  = $opts->{fig}->{$_} or next;
         my $link = peg_link($peg, $opts->{anno});
         $link ||= SeedUtils::id_url($opts->{alias}->{$_}) || SeedUtils::id_url($_);
-        $opts->{link}->{$_} ||= $link;
+        $opts->{link}->{$_} = $link;
     }
 }
 
@@ -1354,17 +1239,13 @@ sub fix_tip_popups {
     my ($tree, $opts) = @_;
 
     my $spc = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
-    my $field = $opts->{popup_field} || 'Description';
 
     for my $tip (newick_tip_list($tree)) {
         my ($feature, $html);
         # $feature->{'Alias'}       = [ $opts->{alias}->{$tip} ]                if $opts->{alias}->{$tip};
+        $feature->{'Description'} = [ $opts->{popup}->{$tip} ]                if $opts->{popup}->{$tip};
         $feature->{'Taxonomy'}    = [ reverse @{$opts->{tax}->{$tip}}[0..5] ] if $opts->{tax}->{$tip};
         $feature->{'Function'}    = [ split(/@\s*/, $opts->{role}->{$tip})  ] if $opts->{role}->{$tip};
-
-        if ($opts->{popup}->{$tip}) {
-            $feature->{$field}    = ref($opts->{popup}->{$tip}) eq 'ARRAY' ? $opts->{popup}->{$tip} : [ $opts->{popup}->{$tip} ];
-        }
         
         my @lines;
         for my $k (sort keys %$feature) {
@@ -1396,8 +1277,7 @@ sub html_tree_body {
     my ($tree, $opts) = @_;    
 
     $tree = copy_newick_tree($tree);
-    $tree = gjonewicklib::reroot_newick_to_midpoint_w($tree) unless gjonewicklib::newick_is_rooted($tree);
-    # $tree = gjonewicklib::reroot_newick_to_midpoint_w($tree) unless $opts->{rooted};
+    $tree = gjonewicklib::reroot_newick_to_midpoint_w($tree) unless $opts->{rooted};
     $tree = gjonewicklib::rooted_newick_subtree($tree, keys %{$opts->{keep}}) if $opts->{keep};
 
     ($tree) = gjonewicklib::collapse_zero_length_branches($tree);
@@ -1432,13 +1312,13 @@ sub html_tree_body {
         my $text  = $opts->{text_link}->{$_};
 
         my @words = split(/\s+/, $id);
-        if (int($gray) > 0) {
+        if ($gray > 0) {
             $id   = join(" ", @words[0..$gray-1]);
             $desc = join(" ", @words[$gray..$#words]);
         }
 
         $id    = $id . " (duplicate)" if $opts->{dup}->{$_};
-        $id    = span_description($id, $opts->{desc}->{$_});
+        $id    = $id . " (". $opts->{desc}->{$_} .")" if $opts->{desc}->{$_};
         $id    = add_link($id, $opts->{link}->{$_});
         $id    = span_css($id, "bold") if $opts->{focus_set}->{$_};
         $id    = span_css($id, $opts->{color}->{$_});
@@ -1538,13 +1418,6 @@ sub span_identical_seqs {
     return span_mouseover($text, $title, join('<br/>', @names));
 }
 
-sub span_description {
-    my ($id, $desc) = @_;
-    return $id unless $desc;
-    my @txts = ref $desc eq 'ARRAY' ? @$desc : $desc;
-    return $id . " ". join(" ", map { "(". $_ .")" } @txts);
-}
-
 sub span_collapsed_subtree {
     my ($tree, $opts) = @_;
     return unless $tree && ref $tree eq 'ARRAY';
@@ -1593,10 +1466,9 @@ sub add_link {
 sub peg_link {
     my ($peg, $anno) = @_;
 
-    $anno                         ? "http://anno-3.nmpdr.org/anno/FIG/seedviewer.cgi?page=Annotation&feature=$peg" :
-    $ENV{SAS_SERVER} eq 'PSEED'   ? "http://pseed.theseed.org/seedviewer.cgi?pattern=$peg&page=SearchResult&action=check_search" :
-    $ENV{SAS_SERVER} eq 'PUBSEED' ? "http://pubseed.theseed.org/seedviewer.cgi?pattern=$peg&page=SearchResult&action=check_search" :
-                                    "http://seed-viewer.theseed.org/seedviewer.cgi?pattern=$peg&page=SearchResult&action=check_search";
+    $anno                       ? "http://anno-3.nmpdr.org/anno/FIG/seedviewer.cgi?page=Annotation&feature=$peg" :
+    $ENV{SAS_SERVER} eq 'PSEED' ? "http://pseed.theseed.org/?pattern=$peg&page=SearchResult&action=check_search" :
+                                  "http://seed-viewer.theseed.org/?pattern=$peg&page=SearchResult&action=check_search";
 }
 
 sub add_peg_link {
@@ -2731,7 +2603,7 @@ sub consolidate_tree {
     color_by_taxonomy($labelH, $opts) if $opts->{taxonomy} && $opts->{pegs};
     add_function_mouseover($labelH, $opts) if $opts->{functions};
 
-    my $newtree = gjonewicklib::rooted_newick_subtree($tree, @$keep);
+    my $newtree = gjonewicklib::newick_subtree($tree, @$keep);
     if ($newtree) {
         $newtree = gjonewicklib::aesthetic_newick_tree($newtree);
         $newtree = gjonewicklib::newick_relabel_tips($newtree, $labelH);

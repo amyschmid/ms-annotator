@@ -580,7 +580,7 @@ sub parse_one_genbank_entry
 
     while ( $state == 3 )
     {
-        if ( /^ORIGIN/ )
+        if ( /^ORIGIN / )
         {
             $entry{ ORIGIN } = $1 if /^ORIGIN \s+(\S.*\S)\s*$/;
             $state = 4;
@@ -602,8 +602,7 @@ sub parse_one_genbank_entry
 
         elsif ( /^(.{10})  (.*)$/ )  # Any other keyword
         {
-            my ( $tag, @value ) = ( uc( $1 ), $2 );
-            foreach ( $tag, @value ) { s/^ +| +$//g }
+            my ( $tag, @value ) = map { s/^ +| +$//g; $_ } ( uc( $1 ), $2 );
 
             # Merge continuations:
 

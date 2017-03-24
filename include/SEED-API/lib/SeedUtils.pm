@@ -906,7 +906,6 @@ Returns TRUE if the role is hypothetical, else FALSE.
 sub hypo {
     my ($func) = @_;
     if (! $func)                             { return 1 }
-    $func =~ s/\s*\#.*$//;
     if ($func =~ /lmo\d+ protein/i)          { return 1 }
     if ($func =~ /hypoth/i)                  { return 1 }
     if ($func =~ /conserved protein/i)       { return 1 }

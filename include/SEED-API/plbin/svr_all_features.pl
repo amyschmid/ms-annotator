@@ -32,7 +32,7 @@ would contain the functions of those genes.
 
 =item Genome
 
-A genome that is in the SEED. The ID must be a valid SEED genome ID of the
+A genome that is in the SEED (the ID must be a valid SEED genome ID of the
 form /^\d+\.\d+$/ (i.e., of the form xxxx.yyy)
 
 =item Type
@@ -55,62 +55,18 @@ my $usage = "usage: svr_all_features [Genome] Type";
 
 my($genome, $type);
 
-if (@ARGV == 1)
-{
-    $type = shift;
-}
-elsif (@ARGV == 2)
-{
-    $genome = shift;
-    $type = shift;
+$genome = shift @ARGV or die $usage;
+$type   = shift @ARGV or ($type, $genome) = ($genome, [ map { chomp; (split/\t/)[-1] } <STDIN> ]);
 
-    process_genomes($type, [$genome]);
-    exit;
-}
-else
-{
-    die $usage;
-}
+my $fidHash = $sapObject->all_features(-ids => $genome, -type => $type);
 
-#
-# If we get here, we are reading genomes from STDIN. Process in batches
-# to make this code friendlier on the servers for large input files.
-#
-
-my $batch_size = 10;
-
-my @genomes;
-
-while (<STDIN>)
-{
-    chomp;
-    my @cols = split(/\t/);
-    my $genome = $cols[-1];
-    push(@genomes, $genome);
-    if (@genomes >= $batch_size)
-    {
-	process_genomes($type, \@genomes);
-	@genomes = ();
-    }
-}
-if (@genomes)
-{
-    process_genomes($type, \@genomes);
-}
-   
-sub process_genomes
-{
-    my($type, $genomes) = @_;
-
-    # print STDERR "Request @$genomes\n";
-    my $fidHash = $sapObject->all_features(-ids => $genomes, -type => $type);
-
-    foreach my $gid (@$genomes)
-    {
-	foreach my $fid (sort { &SeedUtils::by_fig_id($a, $b) } @{$fidHash->{$gid}} )
-	{
-	    print "$fid\n";
-	}
+foreach my $gid (keys %$fidHash) {
+    foreach my $fid (sort { $a =~ /(\d+)$/; 
+                            my $x = $1; 
+                            $b =~ /(\d+)$/; 
+                            ($x <=> $1) 
+                        } @{$fidHash->{$gid}}) {
+        print "$fid\n";
     }
 }
 

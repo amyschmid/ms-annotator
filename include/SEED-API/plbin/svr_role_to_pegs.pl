@@ -17,11 +17,11 @@ Get PEGs that implement a given set of functional roles
 The standard input should be a tab-separated table (i.e., each line 
 is a tab-separated set of fields).  Normally, the last field in each
 line would contain a role for which functions are being requested.
-If some other column contains the roles, use
+If some other column contains the PEGs, use
 
     -c N
 
-where N is the column (from 1) that contains the role in each case.
+where N is the column (from 1) that contains the PEG in each case.
 
 If you wish to constrain the set of PEGs to a specific set of genomes,
 you can specify a file containing genomes IDs.
@@ -79,7 +79,7 @@ if ($genomesF)
 my $roleH;
 if ($genomesF)
 {
-    $roleH = $sapO->occ_of_role( -roles => \@roles, -genomes => \@genomes );
+    $roleH = $sapO->occ_of_role( -roles => \@roles, -genmomes => \@genomes );
 }
 else
 {

@@ -29,7 +29,7 @@ use Getopt::Long;
 
     svr_taxonomically_related_genomes [-c] [-d depth] < genome_ids > expanded_genome_ids
 
-Get a list of genomes that are taxonomically related to the input genomes.
+This scripts print a list of genome IDs that are taxonomically related to the input genomes.
 
 =head1 Introduction
 

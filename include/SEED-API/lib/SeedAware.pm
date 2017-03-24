@@ -519,38 +519,13 @@ sub executable_for
 
     #  If we can get the search path, require that it be there
 
-    # Explicit windows support.
-    #
-
-    if ($^O eq 'MSWin32')
+    if ( $ENV{PATH} )
     {
-	if ( $ENV{PATH} )
-	{
-	    foreach my $bin ( split /;/, $ENV{PATH} )
-	    {
-		next if $bin eq '' || ! -d $bin;
-		for my $suffix ('', '.exe', '.cmd', '.bat')
-		{
-		    my $tmp = "$bin\\$prog$suffix";
-		    if (-x $tmp)
-		    {
-			return $tmp;
-		    }
-		}
-	    }
-	    return undef;   # fall-through means it is not in the path
-	}
-    }
-    else
-    {
-	if ( $ENV{PATH} )
-	{
-	    foreach my $bin ( split /:/, $ENV{PATH} )
-	    {
-		return "$bin/$prog" if defined $bin && -d $bin && -x "$bin/$prog";
-	    }
-	    return undef;   # fall-through means it is not in the path
-	}
+        foreach my $bin ( split /:/, $ENV{PATH} )
+        {
+            return "$bin/$prog" if defined $bin && -d $bin && -x "$bin/$prog";
+        }
+        return undef;   # fall-through means it is not in the path
     }
 
     return $prog;   # default to unadorned program name

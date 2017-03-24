@@ -79,9 +79,9 @@ Use clustal to align ends (zero end gap penalty).
 
   Algorithm aliases: -alg (linsi | einsi | ginsi | nwnsi | nwns | fftnsi | fftns (D)) (in descending order or accuracy)
 
-  Supported values: aamatrix bl ep groupsize jtt lap lep lepx LOP LEXP maxiterate op partsize retree tm thread weighti
+  Supported values: aamatrix bl ep groupsize jtt lap lep lepx LOP LEXP maxiterate op partsize retree tm weighti
 
-  Supported flags: 6merpair amino anysymbol auto clustalout dpparttree fastapair fastaparttree fft fmodel genafpair globalpair inputorder localpair memsave nofft noscore nuc parttree quiet reorder treeout
+  Supported flags: 6merpair amino auto clustalout dpparttree fastapair fastaparttree fft fmodel genafpair globalpair inputorder localpair memsave nofft noscore nuc parttree quiet reorder treeout
 
 =head2 Output Format
 
@@ -122,8 +122,8 @@ Usage: svr_align_seqs [options] < seqs.fa > ali.fa
          Algorithm aliases: -alg (linsi | einsi | ginsi | nwnsi | nwns | fftnsi | fftns (D))
                  (in descending order or accuracy)
          Values: aamatrix bl ep groupsize jtt lap lep lepx LOP LEXP maxiterate
-                 op partsize retree thread tm weighti
-         Flags:  6merpair amino anysymbol auto clustalout dpparttree fastapair fastaparttree
+                 op partsize retree tm weighti
+         Flags:  6merpair amino auto clustalout dpparttree fastapair fastaparttree
                  fft fmodel genafpair globalpair inputorder localpair memsave nofft
                  noscore nuc parttree quiet reorder treeout
 
@@ -181,7 +181,6 @@ my %mafft_val = map { $_ => 1 }
                     op
                     partsize
                     retree
-                    thread
                     tm
                     weighti
                  );
@@ -189,7 +188,6 @@ my %mafft_val = map { $_ => 1 }
 my %mafft_flag = map { $_ => 1 }
                  qw( 6merpair
                      amino
-                     anysymbol
                      auto
                      clustalout
                      dpparttree

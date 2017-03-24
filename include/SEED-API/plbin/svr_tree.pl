@@ -42,14 +42,13 @@ usage: svr_tree [options] < ali.fa > tree.newick
 
        -tool fasttree (D), phyml, raxml
 
-       -b  n_bootstraps  - number of bootstrap samples (D = 0)
+       -b  n_bootstraps  - number of bootstrap samples (D = 1)
        -c  num_classes   - number of substitution categories (D = 4)
        -e                - evaluate the log likelihood of a given tree
        -g  log_file      - log file with time and likelihood information
        -i  tree_file     - input tree file for likelihood evaluation 
        -l                - construct tree locally 
        -m  model         - substitution model
-       -n  num_procs     - number of processors to use for bootstraps
        -p  param_str     - parameter string for tree tool
        -r                - use gamma distribution for substitution rates
        -s                - use SPR for tree topology search (more expensive than NNI)
@@ -103,10 +102,6 @@ Amino acids:
   PhyML: LG (d), WAG, JTT, MtREV, Dayhoff, DCMut
 
   RAxML: WAG (d), JTT, Dayhoff, DCMUT, METREV, RTREV, CPREV, VT, BLOSSUM62, MTNAM, GTR 
-
-=item -n num_procs
-
-Number of processors to use for bootstraps.
 
 =item -p param_str
 
@@ -166,14 +161,13 @@ usage: svr_tree [options] < ali.fa > tree.newick
 
        -tool fasttree (D), phyml, raxml
 
-       -b  n_bootstraps  - number of bootstrap samples (D = 0)
+       -b  n_bootstraps  - number of bootstrap samples (D = 1)
        -c  num_classes   - number of substitution categories (D = 4)
        -e                - evaluate the log likelihood of a given tree
        -g  log_file      - log file with time and likelihood information
        -i  tree_file     - input tree file for likelihood evaluation 
        -l                - construct tree locally 
        -m  model         - substution model
-       -n  num_procs     - number of processors to use for bootstraps
        -p  param_str     - parameter string for tree tool
        -r                - use gamma distribution for substitution rates
        -s                - use SPR for tree topology search (more expensive than NNI)
@@ -194,7 +188,7 @@ usage: svr_tree [options] < ali.fa > tree.newick
 
 End_of_Usage
 
-my ($help, $local, $url, $nc, $eval, $logfile, $intree, $model, $params, $gamma, $spr, $treefile, $bootstrap, $noml, $nome, $mllen, $nproc);
+my ($help, $local, $url, $nc, $eval, $logfile, $intree, $model, $params, $gamma, $spr, $treefile, $bootstrap);
 my ($tool, $fasttree, $raxml, $phyml);
 
 GetOptions("h|help"         => \$help,
@@ -206,7 +200,6 @@ GetOptions("h|help"         => \$help,
            "g|log=s"        => \$logfile,
            "i|in=s"         => \$intree,
            "m=s"            => \$model,
-           "n|np=i"         => \$nproc,
            "p=s"            => \$params,
            "r|gamma"        => \$gamma,
            "s|spr"          => \$spr,
@@ -214,10 +207,7 @@ GetOptions("h|help"         => \$help,
            "tool|program=s" => \$tool,
            "phyml"          => \$phyml,
            "raxml"          => \$raxml,
-           "fasttree"       => \$fasttree,
-           "noml"           => \$noml,
-           "nome"           => \$nome,
-           "mllen"          => \$mllen);
+           "fasttree"       => \$fasttree);
 
 $help and die $usage;
 
@@ -237,16 +227,10 @@ $opts->{model}        = $model     if $model;
 $opts->{params}       = $params    if $params;
 $opts->{logfile}      = $logfile   if $logfile;
 $opts->{treefile}     = $treefile  if $treefile;
-$opts->{noml}         = 1          if $noml;
-$opts->{nome}         = 1          if $nome;
-$opts->{mllen}        = 1          if $mllen;
-$opts->{nproc}        = $nproc     if $nproc;  
 $opts->{input}        = ffxtree::read_tree($intree) if $intree;
 $opts->{ali}          = gjoseqlib::read_fasta();
 
 !$eval || $opts->{input} or die $usage;
-
-$opts->{nproc} = 4 if $nproc > 4 && !$local; # override maximum nproc on bio-big
 
 my $AT;
 my ($tree, $stats, $ret);

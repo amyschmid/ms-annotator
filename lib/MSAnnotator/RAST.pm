@@ -44,15 +44,34 @@ sub prepare_genbankfile {
 }
 
 sub rast_submit {
+  # TODO Fix this
   # Options from RASTserver:
-  #  -file -filetype -taxonomyID -domain -organismName
-  #  -keepGeneCalls -geneticCode -geneCaller
+  #
+  # The equivalent of the "Keep Original Genecalls" flag is '--reannotate_only'.
+  # The currently-supported arguments are:
+  #   --help             => {Print 'help' information}
+  #   --user             => RAST username,
+  #   --passwd           => RAST password,
+  #   --fasta            => filename of FASTA-format file for upload
+  #   --genbank          => filename of GenBank-format file for upload
+  #   --bioname          => quoted name of genome (i.e., "Genus species strain")
+  #   --domain           => Domain of genome (Bacteria|Archaea|Virus)
+  #   --taxon_ID         => NCBI Taxonomy-ID (def: 6666666)
+  #   --genetic_code     => NCBI genetic-code number (def: 11)
+  #   --gene_caller      => rast or glimmer3
+  #   --reannotate_only  => Keep uploaded GenBank genecalls; only assign functions, etc.
+  #   --determine_family => Use slow BLAST instead of fast Kmers to determine family memberships
+  #   --kmerDataset      => Which set of FIGfam Kmers to use (def: 'Release70')
+  #   --fix_frameshifts  => Attempt to reconstruct frameshifts errors
+  #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
+
   my ($asmids, $assemblies) = @_;
   my %opts = (
     -filetype => 'genbank',
     -domain => 'archaea',
     -geneCaller => 'rast',
-    -geneticCode => 11,
+    -reannotate_only => 1,
+    -genetic_code => 11,
     -keepGeneCalls => 1);
 
   # Ensure genbank files are extracted
@@ -72,7 +91,8 @@ sub rast_submit {
       %opts};
     my $ret = $rast_client->submit_RAST_job($params);
 
-    # Catch errors
+    # TODO RASTserver.pm will die uppon catching an error
+    say $ret->{status};
     if ($ret->{status} eq 'ok') {
       update_known($ret->{job_id}, $asm);
     } else {

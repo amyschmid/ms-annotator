@@ -222,12 +222,10 @@ gjoseqlib::print_alignment_as_fasta($trim);
 
 if ($html) {
     my @ali2  = map { [@$_[0,1], uc($_->[2])] } @{$opts->{ali}};
-    my %desc  = map { $_->[0] => $_->[1] } @ali2;
-    my %coord = map { $_->[0] => substr($_->[1], length($desc{$_->[0]})) } @$trim;
-
+    my %coord = map { $_->[0] => $_->[1] } @$trim;
     my ($beg, $end) = (0, length($ali2[0]->[2]));
     for (@ali2) {
-        $_->[1] = $desc{$_->[0]}. $coord{$_->[0]};
+        $_->[1] = $coord{$_->[0]};
         my $i = 0;
         my $j = length($_->[2]) - 1;
         if ($coord{$_->[0]} =~ /.* \((\d+)-(\d+)\/(\d+)\)/) {

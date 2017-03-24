@@ -100,23 +100,25 @@ sub align_sequences {
         return $program->($seqs, $opts);
     }
 
-    my $ali = @$seqs > 1 ? $program->($seqs, $opts) : $seqs;
+    my $ali = $program->($seqs, $opts);
 
-    if ($opts->{clustal_ends} && $opts->{tool} != ~/clustal/i && @$ali > 1) {
+    if ($opts->{clustal_ends} && $opts->{tool} != ~/clustal/i) {
         my $opts2 = { global_coords => 1 };
         trim_ali_to_conserved_domains($ali, $opts2);
         my ($b, $e) = ($opts2->{global_beg}, $opts2->{global_end});
         # print STDERR "b, e, l = $b, $e, ". length($ali->[0]->[2])."\n";
         if (defined $b && defined $e && $b < $e) {
-            my $len  = length $ali->[0]->[2];
-
-            my @head = map { [ $_->[0], $_->[1], substr($_->[2], 0, $b) ] } @$ali if $b > 0;
-            my @tail = map { [ $_->[0], $_->[1], substr($_->[2], $e+1)  ] } @$ali if $e < $len-1;
-
-            my %head = map { $_->[0] => $_->[2] } gjoalignment::align_with_clustal(@head) if @head;
-            my %tail = map { $_->[0] => $_->[2] } gjoalignment::align_with_clustal(@tail) if @tail;
-
-            $_->[2]  = $head{$_->[0]} . substr($_->[2], $b, $e-$b+1) . $tail{$_->[0]} for @$ali;
+            my %inner;
+            my @padded = @$ali;
+            my $padstr = 'PADDINGPADDING';
+            for (@padded) {
+                $inner{$_->[0]} = substr($_->[2], $b, $e-$b+1);
+                substr($_->[2], $b, $e-$b+1) = $padstr;
+            }
+            $ali = gjoalignment::align_with_clustal(@padded);
+            for (@$ali) {
+                $_->[2] =~ s/$padstr/$inner{$_->[0]}/e;
+            }
         }
     }
 
@@ -134,7 +136,6 @@ sub align_sequences {
 #     win_size        => size    # size of sliding window used in scoring domain conservation
 #     domain_conserv  => thresh  # min mean domain conservation (D = 0.3)
 #     residue_conserv => thresh  # min residule conservation for trimmed end sites (D = 0.1)
-#     gap_tolerance   => frac    # max fraction of nongap rows allowed for extending trimmed ends (D = 0.05)
 #     global_coords   => bool    # return coordinates of the internal region
 #                                  between the relatively conserved end domains:
 #                                    $opts->{global_beg} = first site
@@ -148,7 +149,6 @@ sub trim_ali_to_conserved_domains {
     my $winsize = $opts->{win_size}        || 10;
     my $domain  = $opts->{domain_conserv}  || 0.3;
     my $residue = $opts->{residue_conserv} || 0.1;
-    my $nongap  = $opts->{gap_tolerance}   || 0.05;
 
     my $conserv = residue_conserv_scores($ali);
     my $len = length($ali->[0]->[2]);
@@ -172,26 +172,6 @@ sub trim_ali_to_conserved_domains {
     }
     $b = max($b-$winsize+1, 0);      $b++ while $conserv->[$b] < $residue;
     $e = min($e+$winsize-1, $len-1); $e-- while $conserv->[$e] < $residue;
-
-    # extend both ends beyond columns with extremely high fraction of gaps (badly aligned columns)
-    my ($bb, $ee) = ($b, $e);
-    my $chars = qr/^[A-Za-z]$/;
-
-    while ($bb-- > 0) {
-        my @nongaps = grep { /$chars/ } map { substr($_->[2], $bb, 1) } @$ali;
-        my $frac = @nongaps / @$ali;
-        $frac = 1 if $frac > $nongap;
-        $b = $bb if $conserv->[$bb] >= $residue;
-        last if $conserv->[$bb] < $residue * $frac * $frac; # basically allow columns with nearly all gaps to pass through
-    }
-
-    while ($ee++ < $len-1) {
-        my @nongaps = grep { /$chars/ } map { substr($_->[2], $ee, 1) } @$ali;
-        my $frac = @nongaps / @$ali;
-        $frac = 1 if $frac > $nongap;
-        $e = $ee if $conserv->[$ee] >= $residue;
-        last if $conserv->[$ee] < $residue * $frac * $frac;
-    }
 
     my @ali2 = map { [@$_[0,1], substr($_->[2], $b, $e-$b+1)] } @$ali;
 
@@ -275,64 +255,6 @@ sub residue_conserv_scores {
     }
 
     wantarray ? @conserv : \@conserv;
-}
-
-
-#-------------------------------------------------------------------------------
-#   @conserved_regions = conserved_regions_in_ali( \@align, \%opts)
-#  \@conserved_regions = conserved_regions_in_ali( \@align, \%opts)
-# 
-#  Options:
-#
-#     conserv    => HASH      # precomputed conservation data
-#     sort       => BOOL      # return regions sort by conservation 
-#     thresh     => conserve  # threshold for average site convervation score (D = 0.6)
-#     win_min    => size      # minimum window size (D = 4)
-#     win_max    => size      # maximum window size (D = 10)
-#
-#-------------------------------------------------------------------------------
-
-sub conserved_regions_in_ali {
-    my ($ali, $opts) = ffxtree::process_input_args_w_ali(@_);
-
-    my $win_min = $opts->{win_min} || 4;
-    my $win_max = $opts->{win_max} || 10;
-    my $thresh  = $opts->{thresh}  || 0.6;
-    my $conserv = $opts->{conserv} || AlignTree::residue_conserv_scores($ali);
-    my $sort    = $opts->{sort};
-    
-    my @cands;
-    my %cov;
-    my @sum;
-    my @coords;
-
-    my $len = length($ali->[0]->[2]);
-    for (my $i = 1; $i <= $len; $i++) { # 1-based coordinates
-        $sum[$i] = $sum[$i-1] + $conserv->[$i-1];
-    }
-
-    for (my $b = 1; $b <= $len-$win_min + 1; $b++) {
-        for (my $e = $b+$win_min-1; $e < $b+$win_max && $e <= $len; $e++) {
-            my $score = sprintf "%.3f", ($sum[$e] - $sum[$b-1]) / ($e - $b + 1);
-            push @cands, [$b, $e, $score] if $score >= $thresh;
-        }
-    }
-
-    # @cands = sort { $b->[2] <=> $a->[2] } @cands if $sort;
-    @cands = sort { $b->[2] <=> $a->[2] } @cands;
-    # return @cands;
-
-    for my $cand (@cands) {
-        my ($b, $e, $score) = @$cand;
-        my $seen;
-        $seen += $cov{$_} for $b..$e;
-        next if $seen;
-
-        push @coords, $cand;
-        $cov{$_} = 1 for $b..$e;
-    }
-
-    wantarray ? @coords : \@coords;
 }
 
 #-------------------------------------------------------------------------------
@@ -453,7 +375,7 @@ sub trim_alignment {
 #
 #     $profile can be $profile_file_name or \@profile_seqs
 #     $db      can be $db_file_name      or \@db_seqs, or
-#              'SEED', 'PSEED' or 'PUBSEED', for protein seqs in complete genomes in annotator's SEED, PSEED or PUBLIC-PSEED
+#              'SEED' or 'PSEED', for protein seqs in complete genomes in annotator's SEED or PSEED
 #
 #     If supplied as file, profile is pseudoclustal
 #
@@ -479,7 +401,6 @@ sub trim_alignment {
 #     min_s_cov     =>  $frac_cov       #  minimum fraction coverage of subject sequence (D = 0.20)
 #     max_reps_sim  =>  $thresh         #  threshold used to collapse seqs into representatives (D = 0.8)
 #     nresult       =>  $max_seq        #  maximim matching sequences (D = 5000)
-#     nthread       =>  $n_thread       #  number of blastpgp threads (D = 2)
 #     query         =>  $q_file_name    #  query sequence file (D = most complete)
 #     query         => \@q_seq_entry    #  query sequence (D = most complete)
 #     stderr        =>  $file           #  blastpgp stderr (D = /dev/stderr)
@@ -503,23 +424,19 @@ sub psiblast_search {
     elsif (@_ == 1 && ref $_[0] eq 'HASH')  { ($opts)                = @_ }
 
     $opts->{nresult} ||= 5000;
-    $opts->{nthread} ||= 2;
     $opts->{stderr}  ||= '/dev/null';
 
     $profile ||= $opts->{profile};
     $db      ||= $opts->{db} || 'SEED';
 
-    # my $org_dir = "/home/fangfang/FIGdisk/FIG/Data/Organisms";
+    my $org_dir = "/home/fangfang/FIGdisk/FIG/Data/Organisms";
+    my $psi_dir = "/home/fangfang/WB/PsiblastDB/";
     # my $org_dir = ${FIG_Config::data};  # does not work on bio-big
-    my $org_dir = "/vol/public-pseed/FIGdisk/FIG/Data/Organisms"; # complete genomes only
-    my $psi_dir = $ENV{PsiblastDB} || "/home/fangfang/WB/PsiblastDB";
-
+    
     if (ref $db ne 'ARRAY') {
-        if ($db =~ /^(\d+\.\d+)$/)  { $db = "$org_dir/$1/Features/peg/fasta" }
-        elsif (uc $db eq 'PPSEED')  { $db = "$psi_dir/public-pseed.complete" }
-        elsif (uc $db eq 'PUBSEED') { $db = "$psi_dir/public-pseed.complete" }
-        elsif (uc $db eq 'PSEED')   { $db = "$psi_dir/ppseed.NR" }
-        elsif (uc $db eq 'SEED')    { $db = "$psi_dir/SEED.complete.fasta" }
+        if ($db =~ /^(\d+\.\d+)$/) { $db = "$org_dir/$1/Features/peg/fasta" }
+        elsif (uc $db eq 'PSEED')  { $db = "$psi_dir/ppseed.NR" }
+        elsif (uc $db eq 'SEED')   { $db = "$psi_dir/SEED.complete.fasta" }
     }
 
     my $inc = $opts->{incremental} || $opts->{inc};
@@ -530,18 +447,6 @@ sub psiblast_search {
     wantarray ? ($hits, $report, $history) : $hits;
 }
 
-
-sub db_name_to_file {
-    my ($db) = @_;
-    my $org_dir = "/vol/public-pseed/FIGdisk/FIG/Data/Organisms"; # complete genomes only
-    my $psi_dir = "/home/fangfang/WB/PsiblastDB/";
-    if ($db =~ /^(\d+\.\d+)$/)  { $db = "$org_dir/$1/Features/peg/fasta" }
-    elsif (uc $db eq 'PPSEED')  { $db = "$psi_dir/public-pseed.complete" }
-    elsif (uc $db eq 'PUBSEED') { $db = "$psi_dir/public-pseed.complete" }
-    elsif (uc $db eq 'PSEED')   { $db = "$psi_dir/ppseed.NR" }
-    elsif (uc $db eq 'SEED')    { $db = "$psi_dir/SEED.complete.fasta" }
-    return $db;
-}
 
 #-------------------------------------------------------------------------------
 #
@@ -586,7 +491,6 @@ sub incremental_psiblast_search {
     my $max_query_nseq    = $opts->{max_query_nseq}    || 500;
     my $max_reps_sim      = $opts->{max_reps_sim}      || 0.95;
     my $min_reps_seqs     = $opts->{min_seqs_for_reps} || 10;
-    my $nthread           = $opts->{nthread}           || 2;
     my $fast              = $opts->{fast_trimming}     || $opts->{fast} ? 1 : 0;
     my $use_reps          = $opts->{use_reps}          || $opts->{max_reps_sim} ? 1 : 0;
 
@@ -601,9 +505,9 @@ sub incremental_psiblast_search {
     my @history;
     my @prof = @$profile;
 
-    my $opts2 = { tool => 'mafft', auto => 1, 'clustal_ends' => !$fast };                                                                      # align
-    my $opts3 = { query => $opts->{query}, e_value => 0.01, max_q_uncov => 500, nresult => 5000, stderr => '/dev/null', nthread => $nthread }; # psiblast
-    my $opts4 = $fast || $initial_set_keep >= 1 ? { to_domain => 1, skip_psiblast => 1 } : { align_opts => $opts2 };                           # trim
+    my $opts2 = { tool => 'mafft', auto => 1, 'clustal_ends' => !$fast };  # align
+    my $opts3 = { e_value => 0.01, max_q_uncov => 500, nresult => 5000, stderr => '/dev/null' }; # psiblast
+    my $opts4 = $fast || $initial_set_keep >= 1 ? { to_domain => 1, skip_psiblast => 1 } : { align_opts => $opts2 }; # trim
 
     # in case profile seqs are unaligned
     my @lens = sort { $a <=> $b } map { length $_->[2] } @$profile;
@@ -622,15 +526,12 @@ sub incremental_psiblast_search {
 
     $max_query_nseq = min($max_query_nseq, $opts->{nresult}) if $opts->{nresult} > 0;
     my @seqs = @$profile;
-    my $query;
     my $i = 0;
     while (@seqs < $max_query_nseq) {
         my ($hits, $report) = gjoalignandtree::extract_with_psiblast($db, \@prof, $opts3);
         my $record = [ length $prof[0]->[2], scalar @seqs, scalar @prof, scalar keys %$report ];
         push @history, $record;
         print STDERR join("\t", @$record)."\n";
-        last unless @$hits > 0;
-
         my %score;
         for (keys %$report) {
             my ($scr, $exp, $slen, $status, $frac_id, $frac_pos, $uncov_q1, $uncov_q2, $uncov_s1, $uncov_s2) = @{$report->{$_}}[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -648,145 +549,22 @@ sub incremental_psiblast_search {
         my %seen;
         $seen{$_} = 1 for @keep;
         @seqs     = grep { $seen{$_->[0]} } @$hits;
-
-        my $qid   = $opts3->{query_used}->[0];
-        my $reps  = $use_reps && @seqs >= $min_reps_seqs ? representative_sequences::rep_seq_2(\@seqs, {max_sim => $max_reps_sim, keep_id => [$qid]}) : [@seqs];
+        my $reps  = $use_reps && @seqs >= $min_reps_seqs ? representative_sequences::rep_seq_2(\@seqs, {max_sim => $max_reps_sim}) : [@seqs];
         my $ali   = align_sequences($reps, $opts2);
         my $trim  = trim_alignment($ali, $opts4);
-
-        my ($query) = grep { $_->[0] eq $qid } @$trim;
-        $opts3->{query} = $query;
-        # print STDERR '$reps = '. Dumper($reps);
-        # print STDERR '$query = '. Dumper($query);
-        # print STDERR "hits, seqs, trim = ". scalar@$hits. "\t". scalar@seqs. "\t". scalar@$trim . "\n";
 
         last if @$trim <= @prof || @$trim >= $max_query_nseq || ($stop_round && ++$i >= $stop_round);
 
         @prof = @$trim;
     }
 
-    my ($hits, $report) = gjoalignandtree::extract_with_psiblast($db, \@prof, $opts); 
+    my ($hits, $report) = gjoalignandtree::extract_with_psiblast($db, \@prof, $opts);
     my $record = [ length $prof[0]->[2], scalar @seqs, scalar @prof, scalar @$hits ];
     push @history, $record;
     print STDERR join("\t", @$record). "\n";
 
     wantarray ? ($hits, $report, \@history) : $hits;
 }
-
-
-#-------------------------------------------------------------------------------
-#
-#  Blast wrapper
-#
-#-------------------------------------------------------------------------------
-
-sub blast {
-    my ($db, $query, $opts);
-
-    if    (@_ >= 2 && ref $_[1] eq 'ARRAY') { ($db, $query, $opts) = @_ }
-    elsif (@_ >= 1 && ref $_[0] eq 'ARRAY') { ($query, $opts)      = @_ }
-    elsif (@_ == 1 && ref $_[0] eq 'HASH')  { ($opts)              = @_ }
-
-    $db    ||= $opts->{db} || $opts->{seqs} || db_name_to_file($db);
-    $query ||= $opts->{query};
-    $query   = [ grep { $_->[0] eq $query } @$db ]->[0] if $db && (ref $db eq 'ARRAY') && @$db > 0;
-
-    my $tmp = SeedAware::location_of_tmp( $opts );
-
-    my ( $dbfile, $rm_db );
-    if ( defined $db && ref $db )
-    {
-        ref $db eq 'ARRAY'
-            && @$db
-            || print STDERR "blast requires one or more database sequences.\n"
-               && return undef;
-        $dbfile = SeedAware::new_file_name( "$tmp/blast_db" );
-        gjoseqlib::print_alignment_as_fasta( $dbfile, $db );
-        $rm_db = 1;
-    }
-    elsif ( defined $db && -f $db )
-    {
-        $dbfile = $db;
-    }
-    else
-    {
-        die "blastpgp requires database.";
-    }
-    verify_db( $dbfile, 'P' );  # protein
-    
-
-    my ( $qfile, $rm_query );
-    if ( defined $query && ref $query )
-    {
-        ref $query eq 'ARRAY' && @$query == 3
-            or print STDERR "blast invalid query sequence.\n"
-               and return undef;
-
-        $qfile = SeedAware::new_file_name( "$tmp/blast_query" );
-        gjoseqlib::print_alignment_as_fasta( $qfile, [$query] );
-        $rm_query = 1;
-    }
-    elsif ( defined $query && -f $query )
-    {
-        $qfile = $query;
-        ( $query ) = gjoseqlib::read_fasta( $qfile );
-    }
-    else
-    {
-        die "blast requires query.";
-    }
-
-    my $e_val  = $opts->{ e_value }  || $opts->{ max_e_val } || $opts->{ max_e_value }            ||    0.01;
-    my $n_cpu  = $opts->{ n_thread } || $opts->{ nthread } || $opts->{ n_cpu } || $opts->{ ncpu } ||    2;
-    my $nkeep  = $opts->{ n_result } || $opts->{ nresult }                                        || 1000;
-    my $prog   = $opts->{ program  } || $opts->{ blast_program } || 'blastp';
-    my $stderr = $opts->{ stderr }   || '/dev/null';
-
-    my $blastall = SeedAware::executable_for( 'blastall' )
-        or print STDERR "Could not find executable for program 'blastall'.\n"
-            and return undef;
-
-    my @cmd = ( $blastall,
-                '-p' => $prog,
-                '-d' => $dbfile,
-                '-i' => $qfile,
-                '-e' => $e_val,
-                '-b' => $nkeep,
-                '-v' => $nkeep,
-                '-F' => 'F'
-              );
-    push @cmd, ( '-a' => $n_cpu ) if $n_cpu;
-    
-    my $blastfh = SeedAware::read_from_pipe_with_redirect( @cmd, { stderr => $stderr } )
-           or print STDERR "Failed to open: '" . join( ' ', @cmd ), "'.\n"
-              and return undef;
-
-    my $out = gjoparseblast::blast_hsp_list( $blastfh, 1 );  
-    close $blastfh;
-
-    if ( $rm_db )
-    {
-        my @files = grep { -f $_ } map { ( $_, "$_.psq", "$_.pin", "$_.phr" ) } $dbfile;
-        unlink @files if @files;
-    }
-    unlink $qfile if $rm_query;
-
-    if ($opts->{m8} && $out && @$out > 0) {
-        my @records = map {
-                            my ($qid, $qdef, $qlen, $sid, $sdef, $slen, $scr,
-                                $e_val, $p_n, $p_val, $n_mat, $n_id, $n_pos, $n_gap,
-                                $dir, $q1, $q2, $qseq, $s1, $s2, $sseq) = @$_;
-                            join("\t", $qid, $sid, sprintf("%.2f", 100 * $n_id / $n_mat),
-                                 $n_mat, $n_mat - $n_id - $n_gap, $n_gap, $q1, $q2,
-                                 $s1, $s2, $e_val, $scr, $qlen, $slen) ."\n";
-        } @$out;
-        $out = join('', @records);
-    }
-
-    return $out;
-}
-
-
 
 #-------------------------------------------------------------------------------
 #
@@ -1123,7 +901,7 @@ sub print_string {
 #
 #  Options:
 #
-#     bootstrap  => n                     # bootstrap samples (D = 0) 
+#     bootstrap  => n                     # bootstrap samples (D = 1) 
 #     tool       => program               # fasttree (d), phyml, raxml
 #
 #     params     => parameter string for tree tool
@@ -1136,7 +914,6 @@ sub print_string {
 #     nclasses   => num_subst_categories  # 4 (d)
 #     optimize   => all (d, topology && brlen && parameters), eval (optimize model parameters only)
 #     input      => input tree            # tree file name
-#     nproc      => number of processors to use for bootstrap 
 #     
 #     Option default values depend the tool used. See details in:
 #       ffxtree:: tree_with_fasttree, tree_with_phyml, tree_with_raxml
@@ -1156,36 +933,17 @@ sub make_tree {
     elsif ($opts->{tool} =~ /phyml/i)    { $program = \&ffxtree::tree_with_phyml;     $opts->{phyml}    = "/home/fangfang/bin/phyml" }
     elsif ($opts->{tool} =~ /raxml/i)    { $program = \&ffxtree::tree_with_raxml;     $opts->{raxml}    = "/home/fangfang/bin/raxmlHPC" }
 
-    my $nb = $opts->{bootstrap};
-    my $np = $opts->{nproc};
-    my $in = $opts->{input};
-
-    my ($tree, $stats);
-
-    if ($nb > 0 && $in) {
-        $tree = $in;
-    } else {
-        ($tree, $stats) = $program->($ali, $opts);
-    }
+    my ($tree, $stats) = $program->($ali, $opts);
     
-    if ($nb > 0) {
-        my @samples = map { my $a = gjoalignment::bootstrap_sample($ali); $a } 1..$nb;
-        my @trees;
-
-        if ($np >= 2) {
-            eval {require Proc::ParallelLoop};
-            my $tmpdir = SeedAware::location_of_tmp($opts);
-            my @output = map { SeedAware::new_file_name("$tmpdir/tree_pareach_$_", 'newick') } 1..$nb;
-            my @tuples; push @tuples, [$samples[$_], $output[$_], $opts] for 0..$nb-1;
-            Proc::ParallelLoop::pareach(\@tuples, sub { my ($a, $f, $o) = @{$_[0]}; $o->{treefile} = $f; my $t = $program->($a, $o);}, { Max_Workers => $np });
-            @trees = map { gjonewicklib::read_newick_tree($_) } @output;
-            unlink $_ for grep { -e $_ } @output;
-        } else {
-            @trees = map { my $t = $program->($_, $opts); $t } @samples;
+    if ((my $n = $opts->{bootstrap}) > 1) {
+        my @samples;
+        for (my $i = 0; $i < $n; $i++) {
+            my $a = gjoalignment::bootstrap_sample($ali);
+            my $t = $program->($a, $opts);
+            push @samples, $t;
         }
-
-        $tree = gjonewicklib::reroot_newick_to_midpoint_w($tree) unless $in;
-        $tree = gjophylip::bootstrap_label_nodes($tree, \@trees);
+        $tree = gjonewicklib::reroot_newick_to_midpoint_w($tree);
+        $tree = gjophylip::bootstrap_label_nodes($tree, \@samples);
     }
 
     wantarray() ? ($tree, $stats) : $tree;
@@ -1197,7 +955,6 @@ sub pfam_scan {
 
     $seqs = gjoseqlib::pack_sequences($seqs);
 
-    my $ncpu    = $opts->{ncpu} || 2;
     my $scan    = "/home/fangfang/bin/pfam_scan.pl";
     my $pfamdir = "/home/fangfang/Pfam";
     my $tmpdir  = SeedAware::location_of_tmp($opts);
@@ -1205,7 +962,7 @@ sub pfam_scan {
 
     gjoseqlib::print_alignment_as_fasta($tmpin, $seqs);
 
-    my @lines   = SeedAware::run_gathering_output($scan, '-fasta', $tmpin, '-dir', $pfamdir, '-cpu', $ncpu);
+    my @lines   = SeedAware::run_gathering_output($scan, '-fasta', $tmpin, '-dir', $pfamdir);
     
     my %pfam;
     for (@lines) {
@@ -1231,8 +988,6 @@ sub print_pfam {
     print join("\n", @lines). "\n";
     # wantarray ? @lines : join("\n", @lines). "\n";
 }
-
-
 
 #-------------------------------------------------------------------------------
 #

@@ -44,13 +44,6 @@ output is to the standard output.
 
 This is used only if the column containing PEGs is not the last.
 
-=item -max MaxReturned [default 1000000]
-
-This is used to restrict the number of results displayed for a single incoming line (not a restriction
-on the number of tatal lines)
-
-=item -n MinSc  [default 15]						    
-
 =back
 
 =head2 Output Format
@@ -68,14 +61,10 @@ use SAPserver;
 my $sapObject = SAPserver->new();
 use Getopt::Long;
 
-my $usage = "usage: svr_functionally_coupled [-c column] [-max MaxReturned] [-n MinScore]";
+my $usage = "usage: svr_functionally_coupled [-c column]";
 
 my $column;
-my $maxR  = 100000;
-my $minsc = 15;
-my $rc  = GetOptions('c=i'    => \$column,
-		     'n=i'    => \$minsc,
-		     'max=i'  => \$maxR);
+my $rc  = GetOptions('c=i' => \$column);
 if (! $rc) { print STDERR $usage; exit }
 
 my @lines = map { chomp; [split(/\t/,$_)] } <STDIN>;
@@ -88,9 +77,7 @@ foreach $_ (@lines)
     my $peg = $_->[$column-1];
     if (my $x = $coupledH->{$peg})
     {
-	my @to_print = sort { $b->[0] <=> $a->[0] } grep { $_->[0] >= $minsc } @$x;
-	if (@to_print > $maxR) { $#to_print = $maxR-1 }
-	foreach my $tuple (@to_print)
+	foreach my $tuple (@$x)
 	{
 	    print join("\t",(@$_,$tuple->[0],$tuple->[1])),"\n";
 	}

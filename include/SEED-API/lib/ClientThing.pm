@@ -29,9 +29,8 @@ package ClientThing;
     use Carp;
     no warnings qw(once);
     use POSIX;
-    use HTTP::Message;
 
-    use constant AGENT_NAME => "SAS version 39";
+    use constant AGENT_NAME => "SAS version rel33a23";
 
 =head1 Base Class for Server Helper Objects
 
@@ -150,13 +149,8 @@ sub new {
         require LWP::UserAgent;
         $ua = LWP::UserAgent->new();
 	$ua->agent(AGENT_NAME . " ($^O $^V)");
-        # Set the default timeout to 20 minutes.
-	my $timeout = 20 * 60;
-	if (exists($ENV{SAS_TIMEOUT}))
-	{
-	    $timeout = $ENV{SAS_TIMEOUT};
-	}
-        $ua->timeout($timeout);
+        # Set the timeout to 20 minutes.
+        $ua->timeout(20 * 60);
     } else {
         # Get access to the server package.
         require "$type.pm";
@@ -166,18 +160,11 @@ sub new {
             die "Error creating $type object: $@";
         }
     }
-    my $accept_encoding = [];
-    eval {
-	my $can_accept = HTTP::Message::decodable();
-	@$accept_encoding = ('Accept-Encoding' => $can_accept);
-    };
-
     # Create the server object.
     my $retVal = { 
                     server_url => $server_url,
                     ua => $ua,
                     singleton => $singleton,
-		    accept_encoding => $accept_encoding,
                     dbName => undef,
                  };
     # Bless it.
@@ -361,7 +348,7 @@ sub ComputeURL {
     my $retVal = $url;
     if (! $retVal) {
         # No. Check the environment variable.
-        my $envParm = $ENV{SAS_SERVER} || 'PUBSEED';
+        my $envParm = $ENV{SAS_SERVER} || 'SEED';
         if ($envParm eq 'SEED') {
             $retVal = "http://servers.nmpdr.org/$name/server.cgi";
         } elsif ($envParm eq 'PSEED') {
@@ -652,7 +639,7 @@ Returns the string returned by the server in response to the request.
 
 sub _send_request {
     # Get the parameters.
-    my ($self, @parms) = @_;
+    my ($self, %parms) = @_;
     # Get the user agent.
     my $ua = $self->{ua};
     # Request the function from the server. Note that the hash is actually passed
@@ -666,22 +653,10 @@ sub _send_request {
     my %codes_to_retry =  map { $_ => 1 } qw(110 408 502 503 504 200) ;
     my $response;
 
-    my $parms;
-    if (@parms == 1 && ref($parms[0]))
-    {
-	$parms = $parms[0];
-    }
-    else
-    {
-	$parms = [@parms];
-    }
-
     while (1) {
-        $response = $ua->post($self->{server_url}, $parms,
-			      @{$self->{accept_encoding}},
-			     );
+        $response = $ua->post($self->{server_url}, [ %parms ]);
         if ($response->is_success) {
-            my $retVal = $response->decoded_content;
+            my $retVal = $response->content;
             return $retVal;
         }
 
@@ -689,31 +664,8 @@ sub _send_request {
         # If this is not one of the error codes we retry for, or if we
         # are out of retries, fail immediately
         #
-
         my $code = $response->code;
-	my $msg = $response->message;
-	my $want_retry = 0;
-	if ($codes_to_retry{$code})
-	{
-	    $want_retry = 1;
-	}
-	elsif ($code eq 500 && $response->header('client-warning') eq 'Internal response')
-	{
-	    #
-	    # Handle errors that were not thrown by the web
-	    # server but rather picked up by the client library.
-	    #
-	    # If we got a client timeout, let us retry.
-	    #
-
-	    if ($msg =~ /timeout/i)
-	    {
-		$want_retry = 1;
-	    }
-	    
-	}
-	
-        if (!$want_retry || @retries == 0) {
+        if (!$codes_to_retry{$code} || @retries == 0) {
             if ($ENV{SAS_DEBUG}) {
                 my $content = $response->content;
                 if (! $content) {
@@ -729,7 +681,7 @@ sub _send_request {
         # otherwise, sleep & loop.
         #
         my $retry_time = shift(@retries);
-        print STDERR strftime("%F %T", localtime), ": Request failed with code=$code msg=$msg, sleeping $retry_time and retrying\n";
+        print STDERR strftime("%F %T", localtime), ": Request failed with code=$code, sleeping $retry_time and retrying\n";
         sleep($retry_time);
 
     }

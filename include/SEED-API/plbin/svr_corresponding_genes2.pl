@@ -1,4 +1,4 @@
-#########################################################################
+########################################################################
 use SeedEnv;
 use gjoseqlib;
 
@@ -7,14 +7,14 @@ use Data::Dumper;
 use Carp;
 use CorrTableEntry;
 
-=head1 svr_corresponding_genes2
+=head1 svr_corresponding_genes
 
 Attempt to Tabulate Corresponding Genes from Two Complete Genomes
 
 ------
-Example: svr_corresponding_genes2 107806.1 198804.1
+Example: svr_corresponding_genes 107806.1 198804.1
 
-would produce a 20-column table that is an attempt to present the
+would produce a 18-column table that is an attempt to present the
 correspondence between the genes in two genomes (in this case
 107806.1 and 198804.1, which are two Buchnera genomes).
 ------
@@ -75,7 +75,8 @@ This allows the user to specify the URL for the Sapling server. If it is
 =item GenomeSpec2
 
 Specify a source of genome data. Either a genome ID (that is available in the SEED servers),
-a SEED genome directory, or a comma-separated triple (protein fasta file, tbl file, function-assignment file).
+a SEED genome directory, or a comma-separated triple (protein fasta file, tbl file, 
+function-assignment file).
     
 =head2 Output Format
 
@@ -161,12 +162,6 @@ what we often refer to as a "normalized bit score".
 
 Number of pegs in the context that have matching functions.
 
-=item Column-20
-
-1 -> it is a clear BBH (similarity is over 80% of each peg, pegs are BBHs, there is no other
-     similarity with a per cent identity within 5)
-0 -> it is not a clear BBH
-
 =back
 
 =cut
@@ -188,7 +183,7 @@ my $rc    = GetOptions("o"              => \$ignore_ov,
                        "n=i"            => \$sz_context,
                        "u=s"            => \$url
                       );
-if (! $rc) { print STDERR "$usage\n"; exit }
+if (! $rc) { print STDERR $usage; exit }
 
 my $sapObject = SAPserver->new(url => $url);
 
@@ -206,30 +201,22 @@ $genome1 or die "Cannot load genome data from $genome1_name\n";
 my $genome2 = make_genome_source($genome2_name, $sapObject);
 $genome2 or die "Cannot load genome data from $genome2_name\n";
 
-$genome1->init_data();
-$genome2->init_data();
-my $functions = {};
-$genome1->get_functions($functions);
-$genome2->get_functions($functions);
-
-# print STDERR "GOT Functions\n";
-
-my $aliases = {};
-$genome1->get_aliases($aliases);
-$genome2->get_aliases($aliases);
-
 #
 # If both arguments are genome ids, see if the SAP server
 # has already computed this correspondence.
 # 
-if ((ref($genome1) eq 'SapGenomeSource') && (ref($genome2) eq 'SapGenomeSource'))
+if ((ref($genome1) eq 'SapGenomeSource') &&
+    (ref($genome2) eq 'SapGenomeSource'))
 {
     my $corr = $sapObject->gene_correspondence_map(-genome1 => $genome1_name,
 						   -genome2 => $genome2_name,
 						   -fullOutput => 1,
 						   -passive => 1);
+    #
+    # TODO add column 19
+    #
     my $fns;
-    my $out_of_date = 0;
+    
     if (defined($corr))
     {
 	foreach my $ent (@$corr)
@@ -257,19 +244,18 @@ if ((ref($genome1) eq 'SapGenomeSource') && (ref($genome2) eq 'SapGenomeSource')
 		}
 		$ent->[18] = $count;
 	    }
-	    if ((@$ent < 20) && (! $out_of_date)) { $out_of_date = 1 }
+	    print join("\t", @$ent), "\n";
 	}
-
-	if ($out_of_date)
-	{
-	    $corr = &update_correspondence($corr,$genome1,$genome2,$functions,$aliases,$sz_context,$ignore_ov);
-	}
-	&print_corr($corr);
 	exit 0;
     }
 }
 
+$genome1->init_data();
+$genome2->init_data();
+
+
 my $tmp_dir = SeedAware::location_of_tmp();
+
 my $formatdb = SeedAware::executable_for("formatdb");
 
 my $tmp1 = "$tmp_dir/tmp1_$$.fasta";
@@ -280,117 +266,93 @@ my $lens2 =  $genome2->get_fasta($tmp2);
 # print STDERR "GOT SIMS\n";
 system($formatdb, '-i', $tmp2, '-p', 'T');
 
-my($sims1,$sims2,$not_clear) = &get_sims($tmp1,$tmp2,$lens1,$lens2);
+my($sims1,$sims2) = &get_sims($tmp1,$tmp2,$lens1,$lens2);
 unlink($tmp1,$tmp2,"$tmp2.psq","$tmp2.pin","$tmp2.phr");
 
-my $corr = &build_corr($genome1,$sims1,$genome2,$sims2,$functions,$aliases,$sz_context,$ignore_ov,$not_clear);
-&print_corr($corr);
+my $functions = {};
+$genome1->get_functions($functions);
+$genome2->get_functions($functions);
 
-sub print_corr {
-    my($corr) = @_;
+# print STDERR "GOT Functions\n";
 
-    foreach my $tuple (sort { &SeedUtils::by_fig_id($a->[0],$b->[0]) } @$corr)
+my $aliases = {};
+$genome1->get_aliases($aliases);
+$genome2->get_aliases($aliases);
+
+# print STDERR "GOT Aliases\n";
+
+my($matching_context, $matching_count) = &matching_neighbors($genome1,$sims1,$genome2,$sims2,$sz_context,$ignore_ov);
+
+# print STDERR "GOT Context\n";
+
+foreach my $peg1 (keys(%$lens1))
+{
+    my $peg2 = $sims1->{$peg1}->[0];
+    if ($peg2)
     {
-	print join("\t",@$tuple),"\n";
+	my $context = "";
+	my $context_count = 0;
+	my $function2 = "";
+	my $aliases2 = "";
+
+	my $function1 = $functions->{$peg1} ? $functions->{$peg1} : "";
+	my $aliases1  = $aliases->{$peg1}   ? $aliases->{$peg1} : "";
+	my $peg3 = $sims2->{$peg2}->[0]; 
+	my $bbh  =  ($peg3  && ($peg3 eq $peg1)) ? "<=>" : "->";
+
+	if ($_ = $matching_context->{"$peg1,$peg2"})  
+	{ 
+	    $context = $_;
+	    $context_count = ($context =~ tr/,//) + 1;
+	}
+
+	my($iden,$psc,$b1,$e1,$b2,$e2,$ln1,$ln2,$bitsc);
+	(undef,$iden,$psc,$bitsc,$b1,$e1,$b2,$e2,$ln1,$ln2) = @{$sims1->{$peg1}};
+	if ($functions->{$peg2})  { $function2 = $functions->{$peg2} }
+	if ($aliases->{$peg2})    { $aliases2  = $aliases->{$peg2} }
+	my $mcount = $matching_count->{"$peg1,$peg2"};
+	$mcount = 0 unless defined($mcount);
+	print join("\t",($peg1,$peg2,$context_count,$context,$function1,$function2,
+			 $aliases1,$aliases2,$bbh,$iden,$psc,
+			 $b1,$e1,$ln1,$b2,$e2,$ln2,$bitsc,$mcount)),"\n";
     }
 }
 
-sub build_corr {
-    my($genome1,$sims1,$genome2,$sims2,$functions,$aliases,$sz_context,$ignore_ov,$not_clear) = @_;
-
-    my $corr = [];
-
-    my($matching_context, $matching_count) = 
-	&matching_neighbors($genome1,$sims1,$genome2,$sims2,$functions,$sz_context,$ignore_ov);
-
-    foreach my $peg1 (keys(%$sims1))
+foreach my $peg2 (keys(%$lens2))
+{
+    my $peg1 = $sims2->{$peg2}->[0];
+    if ($peg1)
     {
-	my $peg2 = $sims1->{$peg1}->[0];
-	if ($peg2)
+	my $context = "";
+	my $context_count = 0;
+	my $function1 = "";
+	my $aliases1 = "";
+
+	my $function2 = $functions->{$peg2} ? $functions->{$peg2} : "";
+	my $aliases2  = $aliases->{$peg2}   ? $aliases->{$peg2} : "";
+	my $peg3 = $sims1->{$peg1}->[0]; 
+	if ($peg3 ne $peg2)
 	{
-	    my $context = "";
-	    my $context_count = 0;
-	    my $function2 = "";
-	    my $aliases2 = "";
-
-	    my $function1 = $functions->{$peg1} ? $functions->{$peg1} : "";
-	    my $aliases1  = $aliases->{$peg1}   ? $aliases->{$peg1} : "";
-	    my $peg3 = $sims2->{$peg2}->[0]; 
-	    my $bbh  =  ($peg3  && ($peg3 eq $peg1)) ? "<=>" : "->";
-
 	    if ($_ = $matching_context->{"$peg1,$peg2"})  
 	    { 
 		$context = $_;
 		$context_count = ($context =~ tr/,//) + 1;
 	    }
-
-	    my($iden,$psc,$b1,$e1,$b2,$e2,$ln1,$ln2,$bitsc);
-	    (undef,$iden,$psc,$bitsc,$b1,$e1,$b2,$e2,$ln1,$ln2) = @{$sims1->{$peg1}};
-	    if ($functions->{$peg2})  { $function2 = $functions->{$peg2} }
-	    if ($aliases->{$peg2})    { $aliases2  = $aliases->{$peg2} }
 	    my $mcount = $matching_count->{"$peg1,$peg2"};
 	    $mcount = 0 unless defined($mcount);
-	    push(@$corr,[$peg1,$peg2,$context_count,$context,$function1,$function2,
-			 $aliases1,$aliases2,$bbh,$iden,$psc,
-			 $b1,$e1,$ln1,$b2,$e2,$ln2,$bitsc,$mcount,
-			 (($bbh ne "<=>") || $not_clear->{$peg1}) ? 0 : 1]);
-	}
-    }
-
-    foreach my $peg2 (keys(%$sims2))
-    {
-	my $peg1 = $sims2->{$peg2}->[0];
-	if ($peg1)
-	{
-	    my $context = "";
-	    my $context_count = 0;
-	    my $function1 = "";
-	    my $aliases1 = "";
-
-	    my $function2 = $functions->{$peg2} ? $functions->{$peg2} : "";
-	    my $aliases2  = $aliases->{$peg2}   ? $aliases->{$peg2} : "";
-	    my $peg3 = $sims1->{$peg1}->[0]; 
-	    if ($peg3 ne $peg2)
-	    {
-		if ($_ = $matching_context->{"$peg1,$peg2"})  
-		{ 
-		    $context = $_;
-		    $context_count = ($context =~ tr/,//) + 1;
-		}
-		my $mcount = $matching_count->{"$peg1,$peg2"};
-		$mcount = 0 unless defined($mcount);
-		my($iden,$psc,$b1,$e1,$b2,$e2,$ln1,$ln2,$bitsc);
-		(undef,$iden,$psc,$bitsc,$b2,$e2,$b1,$e1,$ln2,$ln1) = @{$sims2->{$peg2}};
-		if ($functions->{$peg1})  { $function1 = $functions->{$peg1} }
-		if ($aliases->{$peg1})    { $aliases1  = $aliases->{$peg1} }
-
-		push(@$corr,[$peg1,$peg2,$context_count,$context,$function1,$function2,
+	    my($iden,$psc,$b1,$e1,$b2,$e2,$ln1,$ln2,$bitsc);
+	    (undef,$iden,$psc,$bitsc,$b2,$e2,$b1,$e1,$ln2,$ln1) = @{$sims2->{$peg2}};
+	    if ($functions->{$peg1})  { $function1 = $functions->{$peg1} }
+	    if ($aliases->{$peg1})    { $aliases1  = $aliases->{$peg1} }
+	    print join("\t",($peg1,$peg2,$context_count,$context,$function1,$function2,
 			     $aliases1,$aliases2,"<-",$iden,$psc,
-			     $b1,$e1,$ln1,$b2,$e2,$ln2,$bitsc,$mcount,0]);
-	    }
+			     $b1,$e1,$ln1,$b2,$e2,$ln2,$bitsc,$mcount)),"\n";
 	}	
     }
-    return $corr;
 }
 
-sub update_correspondence {
-    my($corr,$genome1,$genome2,$functions,$aliases,$sz_context,$ignore_ov) = @_;
-
-    my $sims1 = {};
-    my $sims2 = {};
-    my $not_clear = {};
-    foreach $_ (@$corr)
-    {
-	my($id1,$id2,$context_count,$context,$function1,$function2,$aliases1,$aliases2,$bbh,$iden,$psc,
-	   $b1,$e1,$ln1,$b2,$e2,$ln2,$bit_sc,$mcount) = @$_;
-	&update_best($sims1,$id1,$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$ln1,$ln2);
-	&update_best($sims2,$id2,$id1,$iden,$psc,$bit_sc,$b2,$e2,$b1,$e1,$ln2,$ln1);
-    }
-    &set_best_and_not_clear($sims1,$not_clear);
-    &set_best_and_not_clear($sims2,$not_clear);
-    $corr =  &build_corr($genome1,$sims1,$genome2,$sims2,$functions,$aliases,$sz_context,$ignore_ov,$not_clear);
-    return $corr;
-}
+unlink($tmp1);
+unlink($tmp2);
 
 sub get_sims {
     my($tmp1,$tmp2) = @_;
@@ -398,48 +360,63 @@ sub get_sims {
     my @sims = &ProtSims::blastP($tmp1,$tmp2,1,1);  # this last argument forces the use of blast, bypassing blat
     my $sims1 = {};
     my $sims2 = {};
-    my $not_clear = {};
-    
-    my $last = shift @sims;
-    while ($last)
+    my %seen;
+    foreach my $sim (@sims)
     {
-	my $peg1 = $last->id1;
-	my @sims_for_peg = ();
-	while ($last && ($last->id1 eq $peg1))
+	my $id1 = $sim->id1;
+	my $id2 = $sim->id2;
+	my $iden = $sim->iden;
+	my $b1 = $sim->b1;
+	my $e1 = $sim->e1;
+	my $b2 = $sim->b2;
+	my $e2 = $sim->e2;
+	my $psc = $sim->psc;
+	my $bit_sc = $sim->bsc;
+
+	my $x = $sims1->{$id1};
+	if ((! $x) || (($x->[0] ne $id2) && ($psc < $x->[2])))
 	{
-	    push(@sims_for_peg,$last);
-	    $last = shift @sims;
+	    $sims1->{$id1} = [$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$lens1->{$id1},$lens2->{$id2}];
 	}
-	@sims_for_peg = sort { ($a->id2 cmp $b->id2) or ($b->iden <=> $a->iden) } @sims_for_peg;
-	foreach $_ (@sims_for_peg)
+	elsif ($x && ($x->[0] eq $id2))
 	{
-	    my($id1,$id2,$iden,undef,undef,undef,$b1,$e1,$b2,$e2,$psc,$bit_sc,$ln1,$ln2) = @$_;
-	    &update_best($sims1,$id1,$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$ln1,$ln2);
-	    &update_best($sims2,$id2,$id1,$iden,$psc,$bit_sc,$b2,$e2,$b1,$e1,$ln2,$ln1);
+	    ($b1,$e1,$b2,$e2) = &merge($b1,$e1,$b2,$e2,$x->[4],$x->[5],$x->[6],$x->[7]);
+	    $x->[4] = $b1;
+	    $x->[5] = $e1;
+	    $x->[6] = $b2;
+	    $x->[7] = $e2;
+	}
+
+	$x = $sims2->{$id2};
+	if ((! $x) || (($x->[0] ne $id2) && ($psc < $x->[2])))
+	{
+	    $sims2->{$id2} = [$id1,$iden,$psc,$bit_sc,$b2,$e2,$b1,$e1,$lens2->{$id2},$lens1->{$id1}];
+	}
+	elsif ($x && ($x->[0] eq $id2))
+	{
+	    ($b2,$e2,$b1,$e1) = &merge($b2,$e2,$b1,$e1,$x->[4],$x->[5],$x->[6],$x->[7]);
+	    $x->[4] = $b2;
+	    $x->[5] = $e2;
+	    $x->[6] = $b1;
+	    $x->[7] = $e1;
 	}
     }
-    &set_best_and_not_clear($sims1,$not_clear);
-    &set_best_and_not_clear($sims2,$not_clear);
-	
-    return ($sims1,$sims2,$not_clear);
+    # close(BLAST); # This file apparently no longer exists ??
+    return ($sims1,$sims2);
 }
 
 sub merge {
-    my($b1a,$e1a,$b2a,$e2a,$b1b,$e1b,$b2b,$e2b,$bsc1,$bsc2) = @_;
+    my($b1a,$e1a,$b2a,$e2a,$b1b,$e1b,$b2b,$e2b) = @_;
 
     if (($b1a < $b1b) && (abs($b1b - $e1a) < 10) &&
 	($b2a < $b2b) && (abs($b2b - $e2a) < 10))
     {
-	return ($b1a,$e1b,$b2a,$e2b);
+	return ($b1a,$e1b,$b2a,$b2b);
     }
     elsif (($b1b < $b1a) && (abs($b1a - $e1b) < 10) &&
 	   ($b2b < $b2a) && (abs($b2a - $e2b) < 10))
     {
-	return ($b1b,$e1a,$b2b,$e2a);
-    }
-    elsif ($bsc1 >= $bsc2)
-    {
-	return ($b1a,$e1a,$b2a,$e2a);
+	return ($b1b,$e1a,$b2b,$b2a);
     }
     else
     {
@@ -447,8 +424,9 @@ sub merge {
     }
 }
 
+
 sub matching_neighbors {
-    my($genome1,$sims1,$genome2,$sims2,$functions,$sz_context,$ignore_ov) = @_;
+    my($genome1,$sims1,$genome2,$sims2,$sz_context,$ignore_ov) = @_;
 
     my %by_genome;
     my @peg_loc_tuples_in_genome;
@@ -488,83 +466,7 @@ sub matching_neighbors {
     return \%matched_pairs, \%matching_count;
 }
 
-sub set_best_and_not_clear {
-    my($sims,$not_clear) = @_;
 
-    foreach my $id (keys(%$sims))
-    {
-	my $bestL = $sims->{$id};
-#	if ($id eq "fig|224325.1.peg.418") { print STDERR &Dumper($id,$bestL) }
-	my $best = $bestL->[0];
-	if ($best->[2] > 1.0e-20) 
-	{ 
-#	    if ($id eq "fig|224325.1.peg.418") { print STDERR &Dumper($best); die "aborted" }
-	    $not_clear->{$id} = 1 ;
-	}
-
-	if     (! &ok_len($best)) 
-	{ 
-	    $not_clear->{$id} = 1; # poor coverage -> not-clear
-#	    if ($id eq "fig|224325.1.peg.418") { print STDERR &Dumper($best); die "aborted" }
-	} 
-
-	if (@$bestL > 1)
-	{
-	    if  (&ok_len($bestL->[1]) && 
-		 (abs($best->[1] - $bestL->[1]->[1]) < 5))   # diff in identity is < 5 -> not-clear
-	    {
-#		if ($id eq "fig|224325.1.peg.418") { print STDERR &Dumper($bestL); die "aborted"; }
-		$not_clear->{$id} = 1;
-	    }
-	}
-#	if ($id eq "fig|224325.1.peg.418") { print STDERR &Dumper($id,$best,$not_clear->{$id}) }
-	$sims->{$id} = $best;
-    }
-}
-
-sub ok_len {
-    my($sim) = @_;
-
-    my($b1,$e1,$b2,$e2,$ln1,$ln2) = @{$sim}[4..9];
-    return ((($e1-$b1) >= (0.8 * $ln1)) && (($e2-$b2) >= (0.8 * $ln2)));
-}
-
-sub better {
-    my($psc1,$psc2,$bsc1,$bsc2) = @_;
-
-    return (($psc1 < $psc2) || (($psc1 == $psc2) && ($bsc1 > $bsc2)));
-}
-
-sub update_best {
-    my($sims1,$id1,$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$len1,$len2) = @_;
-
-    my $x = $sims1->{$id1};
-    if (! $x)
-    {
-	$sims1->{$id1} = [[$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$len1,$len2]];
-    }
-    elsif ($x && (($x->[0]->[0] ne $id2) && &better($psc,$x->[0]->[2],$bit_sc,$x->[0]->[3])))
-    {
-	splice(@$x,0,0,[$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$len1,$len2]);
-	$#{$x} = 1;
-    }
-    elsif ($x && ($x->[0]->[0] eq $id2))
-    {
-	($b1,$e1,$b2,$e2) = &merge($b1,$e1,$b2,$e2,$x->[0]->[4],$x->[0]->[5],$x->[0]->[6],$x->[0]->[7],$bit_sc,$x->[0]->[3]);
-	$x->[0]->[4] = $b1;
-	$x->[0]->[5] = $e1;
-	$x->[0]->[6] = $b2;
-	$x->[0]->[7] = $e2;
-    }
-    elsif ((@$x == 1) && (($x->[0]->[0] ne $id2) &&  (! &better($psc,$x->[0]->[2],$bit_sc,$x->[0]->[3]))))
-    {
-	$x->[1] = [$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$len1,$len2];
-    }
-    elsif ((@$x == 2) && (($x->[1]->[0] ne $id2) && ($psc < $x->[1]->[2])))
-    {
-	$x->[1] = [$id2,$iden,$psc,$bit_sc,$b1,$e1,$b2,$e2,$len1,$len2];
-    }
-}
 
 sub compare_locs {
     my($loc1,$loc2) = @_;
@@ -641,6 +543,33 @@ sub same_contig {
     return ($contig eq $contig1);
 }
 
+sub get_functions {
+    my($sapObject,$pegs1,$pegs2,$g1dir) = @_;
+
+    if(! $g1dir)
+    {
+	return $sapObject->ids_to_functions(-ids => [@$pegs1,@$pegs2]);
+    }
+    else
+    {
+	my $functions = $sapObject->ids_to_functions(-ids => $pegs2);
+	# (-s "$g1dir/assigned_functions") || die "$g1dir/assigned_functions is missing";
+	# foreach (`cat $g1dir/assigned_functions`)
+
+	if (open(my $fh, "<", "$g1dir/assigned_functions"))
+	{
+	    while (<$fh>)
+	    {
+		if (/^(fig\|\S+)\t(\S.*\S)/)
+		{
+		    $functions->{$1} = $2;
+		}
+	    }
+	    close($fh);
+	}
+	return $functions;
+    }
+}
 
 sub get_aliases {
     my($sapObject,$pegs) = @_;
@@ -668,12 +597,6 @@ sub make_genome_source
     }
     elsif (-d $name)
     {
-	my %deleted;
-	if (-s "$name/Features/peg.deleted.features")
-	{
-	   %deleted  = map { $_ =~ /^(\S+)/; ($1 => 1) } `cut -f1 $name/Features/peg/deleted.features`;
-       }
-
 	my $fasta = "$name/Features/peg/fasta";
 	
 	my $tbl = "$name/Features/peg/tbl";
@@ -706,7 +629,8 @@ sub make_genome_source
 	{
 	    die "No functions file found for $name\n";
 	}
-	return SapFileSource->new($fasta, $tbl, \@files, \%deleted);
+
+	return SapFileSource->new($fasta, $tbl, \@files);
     }
     else
     {
@@ -731,7 +655,8 @@ sub make_genome_source
 	{
 	    die "No function file found in $func\n";
 	}
-	return SapFileSource->new($fasta, $tbl, [$func], {});
+
+	return SapFileSource->new($fasta, $tbl, [$func]);
     }
 }
 
@@ -740,11 +665,11 @@ use strict;
 
 sub new
 {
-    my($class, $fasta, $tbl, $func_files,$deleted) = @_;
+    my($class, $fasta, $tbl, $func_files) = @_;
+
     my $self = {
 	fasta => $fasta,
 	tbl => $tbl,
-	deleted => $deleted,
 	func_files => $func_files,
     };
     bless $self, $class;
@@ -755,17 +680,18 @@ sub init_data
 {
     my($self) = @_;
 
-    my $deleted = $self->{deleted} ? $self->{deleted} : {};
     open(TBL, "<", $self->{tbl}) or die "Cannot read $self->{tbl}: $!";
     
     while (<TBL>)
     {
         chomp;
 	my($id, $loc, @aliases) = split(/\t/);
-	if (! $deleted->{$id})
-	{
-	    $self->{aliases}->{$id} = [@aliases];
-	}
+
+#	my ($contig, $begin, $end, $strand) = parse_location($loc);
+
+	$self->{loc}->{$id} = $loc;
+
+	$self->{aliases}->{$id} = [@aliases];
     }
     close(TBL);
 }
@@ -774,8 +700,8 @@ sub get_fasta
 {
     my($self, $file) = @_;
     
-    my $deleted = $self->{deleted} ? $self->{deleted} : {};
-    my @seqs = grep { ! $deleted->{&SeedUtils::genome_of($_->[0])} }  &gjoseqlib::read_fasta($self->{fasta});
+    my @seqs = &gjoseqlib::read_fasta($self->{fasta});
+    
     &gjoseqlib::print_alignment_as_fasta($file,\@seqs);
     my $lens = {};
     foreach $_ (@seqs)  { $lens->{$_->[0]} = length($_->[2]) }
@@ -785,7 +711,6 @@ sub get_fasta
 sub get_functions
 {
     my($self, $hash) = @_;
-    my $deleted = $self->{deleted} ? $self->{deleted} : {};
 
     for my $file (@{$self->{func_files}})
     {
@@ -794,10 +719,7 @@ sub get_functions
 	{
 	    chomp;
 	    my($id, $fn) = split(/\t/);
-	    if (! $deleted->{$id})
-	    {
-		$hash->{$id} = $fn;
-	    }
+	    $hash->{$id} = $fn;
 	}
 	close(FFILE);
     }
@@ -806,21 +728,17 @@ sub get_functions
 sub get_aliases
 {
     my($self, $hash) = @_;
-    my $deleted = $self->{deleted} ? $self->{deleted} : {};
     for my $key (keys % {$self->{aliases}})
     {
-	if (! $deleted->{$key})
-	{
-	    $hash->{$key} = join(",", @{$self->{aliases}->{$key}});
-	}
+	$hash->{$key} = join(",", @{$self->{aliases}->{$key}});
     }
 }
 
 sub get_peg_loc_tuples
 {
     my($self) = @_;
-    my $deleted = $self->{deleted} ? $self->{deleted} : {};
-    my @all_fids = grep { ! $deleted->{$_} } keys(%{$self->{loc}});;
+
+    my @all_fids = keys(%{$self->{loc}});;
 
     my @peg_loc_tuples_in_genome =
 	sort { &main::compare_locs($a->[1],$b->[1]) }

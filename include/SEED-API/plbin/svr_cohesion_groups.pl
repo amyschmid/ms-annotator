@@ -47,14 +47,6 @@ See Roy A. Jensen's cohesion group analysis (PubMed ID: 18322033)
 
 Specifies the threshold of branch support value for collapsing subtrees. (D = 0.85)
 
-=item -f max_CG_size_in_fraction
-
-Max fraction of a cohesion group (D = 0.20).
-
-=item -m max_CG_size
-
-Max size of a cohesion group (D = number of tips in tree).
-
 =item -o 
 
 With the -o option, all orphan cohesion groups are labeled as 'Orp'.
@@ -85,28 +77,22 @@ usage: svr_cohesion_groups [options] < tree.newick > cohesion_group.table
 
        -c cutoff    - collapse subtrees whose root branch has support
                       values greater than cutoff (D = 0.85)
-       -f fraction  - max fraction of a cohesion group (D = 0.20)
-       -m size      - max size of a cohesion group (D = number of tips in tree)
        -o           - label all orphan groups as 'Orp'
 
 End_of_Usage
 
-my ($help, $cutoff, $fract, $maxcg, $orphan, $single);
+my ($help, $cutoff, $orphan);
 
 GetOptions("h|help"         => \$help,
            "c|cutoff=f"     => \$cutoff,
-           "f|fract=f"      => \$fract,
-           "m|maxcg=i"      => \$maxcg,
-           "o|orphan"       => \$orphan,
-           "s|single"       => \$single);
+           "o|orphan"       => \$orphan);
 
 $help and die $usage;
 
 $cutoff ||= 0.85;
-$fract  ||= 0.50;
 
 my $tree = ffxtree::read_tree();
-my $opts = { 'cg_cutoff' => $cutoff, "max_fract" => $fract, 'max_cg_size' => $maxcg, 'show_orphan' => $orphan, 'single_collapse' => $single };
+my $opts = { 'cg_cutoff' => $cutoff, 'show_orphan' => $orphan };
 my $cg   = ffxtree::make_cohesion_groups($tree, $opts);
 
 if ($cg) {

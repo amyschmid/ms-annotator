@@ -348,12 +348,11 @@ sub representative_for_profile
 #     min_q_cov     =>  $frac_cov       #  minimum fraction coverage of query sequence (D = 0.50)
 #     min_s_cov     =>  $frac_cov       #  minimum fraction coverage of subject sequence (D = 0.01)
 #     n_result      =>  $max_results    #  maxiumn restuls returned (D = 1000)
-#     n_cpu         =>  $n_thread       #  number of blastpgp threads (D = 2)
 #     n_thread      =>  $n_thread       #  number of blastpgp threads (D = 2)
 #     query         =>  $q_file_name    #  query sequence file (D = most complete)
 #     query         => \@q_seq_entry    #  query sequence (D = most complete)
-#     query_used    => \@q_seq_entry    #  output
 #     stderr        =>  $file           #  blastpgp stderr (D = /dev/stderr)
+#     query_used    => \@q_seq_entry    #  output
 #
 #  If supplied, query must be identical to a profile sequence, but no gaps.
 #
@@ -367,7 +366,7 @@ sub extract_with_psiblast
 
     $opts->{ e_value }  ||= $opts->{ max_e_val } || $opts->{ max_e_value } || 0.01;
     $opts->{ n_result } ||= $opts->{ nresult }   || 1000;
-    $opts->{ n_thread } ||= $opts->{ nthread }   || $opts->{ n_cpu } || $opts->{ ncpu } || 2;
+    $opts->{ n_thread } ||=    2;
     my $max_q_uncov_c = $opts->{ max_q_uncov_c  } || $opts->{ max_q_uncov }  || 20;
     my $max_q_uncov_n = $opts->{ max_q_uncov_n  } || $opts->{ max_q_uncov }  || 20;
     my $min_q_cov     = $opts->{ min_q_cov }      || $opts->{ min_frac_cov } || 0.50;
@@ -531,7 +530,6 @@ sub blastpgp
     elsif ( defined $query && -f $query )
     {
         $qfile = $query;
-        ( $query ) = gjoseqlib::read_fasta( $qfile );
     }
     elsif ( $profile )    #  Build it from profile
     {
@@ -545,7 +543,7 @@ sub blastpgp
         die "blastpgp requires database.";
     }
 
-    $opts->{ query_used } = $query;
+    $opts->{ query_used } = gjoseqlib::read_fasta($qfile);
 
     my $e_val = $opts->{ e_value }  || $opts->{ max_e_val } || $opts->{ max_e_value }            ||    0.01;
     my $n_cpu = $opts->{ n_thread } || $opts->{ nthread } || $opts->{ n_cpu } || $opts->{ ncpu } ||    2;
@@ -696,7 +694,6 @@ sub blastpgpn
     elsif ( defined $query && -f $query )
     {
         $qfile = $query;
-        ( $query ) = gjoseqlib::read_fasta( $qfile );
     }
     elsif ( $profile )    #  Build it from profile
     {
@@ -710,7 +707,7 @@ sub blastpgpn
         die "blastpgpn requires database.";
     }
 
-    $opts->{ query_used } = $query;
+    $opts->{ query_used } = gjoseqlib::read_fasta($qfile);
 
     my $e_val = $opts->{ e_value }  || $opts->{ max_e_val } || $opts->{ max_e_value }            ||    0.01;
     my $n_cpu = $opts->{ n_thread } || $opts->{ nthread } || $opts->{ n_cpu } || $opts->{ ncpu } ||    2;

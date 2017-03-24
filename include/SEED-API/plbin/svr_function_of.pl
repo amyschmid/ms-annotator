@@ -56,25 +56,19 @@ use SeedUtils;
 use SAPserver;
 my $sapObject = SAPserver->new();
 use Getopt::Long;
-use ScriptThing;
 
 my $usage = "usage: svr_function_of [-c column]";
 
 my $column;
-my $i = "-";
-my $rc  = GetOptions('c=i' => \$column, 'i=s' => \$i);
+my $rc  = GetOptions('c=i' => \$column);
 if (! $rc) { print STDERR $usage; exit }
-open my $ih, "<$i";
-while (my @tuples = ScriptThing::GetBatch($ih, undef, $column)) {
-    my @ids = map { $_->[0] } @tuples;
-    my $functions = $sapObject->ids_to_functions(-ids => \@ids);
-    for my $tuple (@tuples) {
-        my ($id, $line) = @$tuple;
-        my $function = $functions->{$id};
-        if (! defined $function) {
-            print STDERR "$id not found.\n";
-        } else {
-            print "$line\t$function\n";
-        }
-    }
+
+my @lines = map { chomp; [split(/\t/,$_)] } <STDIN>;
+if (! $column)  { $column = @{$lines[0]} }
+my @fids = map { $_->[$column-1] } @lines;
+
+my $functions = $sapObject->ids_to_functions(-ids => \@fids);
+foreach $_ (@lines)
+{
+    print join("\t",@$_,$functions->{$_->[$column-1]}),"\n";
 }

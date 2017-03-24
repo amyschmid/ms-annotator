@@ -1,31 +1,11 @@
-# -*- perl -*-
-# This is a SAS Component
-#########################################################################
-# Copyright (c) 2011 University of Chicago and Fellowship
-# for Interpretations of Genomes. All Rights Reserved.
-#
-# This file is part of the SEED Toolkit.
-#
-# The SEED Toolkit is free software. You can redistribute
-# it and/or modify it under the terms of the SEED Toolkit
-# Public License.
-#
-# You should have received a copy of the SEED Toolkit Public License
-# along with this program; if not write to the University of Chicago
-# at info@ci.uchicago.edu or the Fellowship for Interpretation of
-# Genomes at veronika@thefig.info or download a copy from
-# http://www.theseed.org/LICENSE.TXT.
-#########################################################################
-
 use strict;
-use warnings;
-
-use SeedUtils;
+use Data::Dumper;
+use Carp;
 use gjoseqlib;
 
-use URI::Escape;
-use Carp;
-use Data::Dumper;
+#
+# This is a SAS Component
+#
 
 
 =head1 svr_inherit_annotations
@@ -93,7 +73,6 @@ This is the user credited with making the changes to the functions
 
 =cut
 
-
 my $usage = "usage: svr_inherit_annotations oldSEEDdir newSEEDdir User";
 
 my($oldD,$newD,$user);
@@ -102,176 +81,97 @@ my($oldD,$newD,$user);
 (($newD = shift @ARGV) && (-d $newD)) || die "$usage";
 ($user  = shift @ARGV) || die "you need to give a User: $usage";
 
-my ($oldOrgID) = ($oldD =~ m/(\d+\.\d+)$/);
-my ($newOrgID) = ($newD =~ m/(\d+\.\d+)$/);
-
-if (-s "$newD/rewrite.functions") {
+if (-s "$newD/rewrite.functions")
+{
     die "$newD/rewrite.functions already exists; delete it and rerun, if it is ok to do so";
 }
-
-if (-s "$oldD/rewrite.functions") {
+if (-s "$oldD/rewrite.functions")
+{
     &run("cp $oldD/rewrite.functions $newD/rewrite.functions");
 }
 
-my $rewriteH = &load_rewrite("$newD/rewrite.rules");
+my $rewrite = &load_rewrite("$newD/rewrite.rules");
 
 &verify_exists("$oldD/Features/peg/fasta");
 &verify_exists("$newD/Features/peg/fasta");
-
-my $corrH = &get_correspondence("$oldD/Features/peg/fasta",
-				"$newD/Features/peg/fasta");
-
-&update_functions( $oldD,$newD, $corrH, $rewriteH, $user);
-&update_annotations($oldOrgID,$newOrgID, $oldD,$newD, $corrH);
-&update_rewrite($rewriteH, "$newD/rewrite.rules");
-
-exit(0);
-
+my $corrH = &get_correspondence("$oldD/Features/peg/fasta","$newD/Features/peg/fasta");
+&update_functions($oldD,$newD,$corrH,$rewrite,$user);
+&update_annotations($oldD,$newD);
 
 sub update_functions {
-    my($oldD,$newD,$corrH,$rewriteH,$user) = @_;
-    
+    my($oldD,$newD,$corrH,$rewrite,$user) = @_;
+
     my $funcsN = &load_funcs("$newD/assigned_functions");
     my $funcsO = &load_funcs("$oldD/assigned_functions");
-    
-    my $func_fh;
-    open($func_fh, ">>$newD/assigned_functions")
-	|| die "Could not append-open file \'$newD/assigned_functions\'";
-    
-    my $anno_fh;
-    open($anno_fh, ">>$newD/annotations")
-	|| die "Could not append-open file \'$newD/annotations\'";
-    carp "Append-opened $newD/annotations in update_functions";
-    
     foreach my $pegN (keys(%$funcsN))
     {
 	my($pegO,$fO,$fn,$fn1);
 	$fn = $funcsN->{$pegN};
-	if ($fn1 = $rewriteH->{$fn})
+	if ($fn1 = $rewrite->{$fn})
 	{
 	    $funcsN->{$pegN} = $fn1;
-	    &assign_function($pegN, $fn1, $user,
-			     qq(Based on rewrite rule for function \'$fn\'),
-			     $func_fh, $anno_fh);
+	    &assign_function($newD,$pegN,$fn1,$user);
 	}
 	elsif (($pegO = $corrH->{$pegN}) && ($fO = $funcsO->{$pegO}) && ($fO ne $fn))
 	{
-	    $rewriteH->{$fn} = $fO;
-	    &assign_function($pegN, $fO, $user,
-			     qq(Based on inheritance from PEG $pegO),
-			     $func_fh, $anno_fh);
+	    $rewrite->{$fn} = $fO;
+	    &assign_function($newD,$pegN,$fO,$user);
 	}
     }
-    close($anno_fh);
-    close($func_fh);
-    
-    return;
-}
-
-sub assign_function {
-    my ($new_peg, $func, $user, $reason, $func_fh, $anno_fh) = @_;
-    
-    confess ("bad call to assign_function:\n",
-	     join("\n", ($new_peg,$func,$user)),
-	     "\n")
-	unless ($new_peg && $func && $user);
-    
-    unless (print $func_fh ($new_peg, "\t", $func, "\n")) {
-	die qq(Could not update function for user=$user, peg=$new_peg, func=$func);
-    }
-    
-    my $time = time;
-    if ($new_peg && $user && $func && $time) {
-	unless (print $anno_fh (join("\n", ($new_peg, $time, $user,
-					    "Set master function to", $func,
-					    $reason
-					    )
-				     ),
-				"\n//\n")
-		) {
-	    die qq(Could not update annotation for user=$user, peg=$new_peg, func=$func);
-	}
-    }
-    else {
-	die qq(Malformed update annotation with user=$user, peg=$new_peg, func=$func);
-    }
-    
-    return;
 }
 
 sub load_funcs {
     my($assignF) = @_;
-    
+
     my $assignments = {};
-    
-    if (open(ASSF,"<$assignF")) {
-	while (defined($_ = <ASSF>)) {
-	    if ($_ =~ /^(\S+)\t(\S[^\t]+\S)/) {
+
+    if (open(ASSF,"<$assignF"))
+    {
+	while (defined($_ = <ASSF>))
+	{
+	    if ($_ =~ /^(\S+)\t(\S[^\t]+\S)/)
+	    {
 		$assignments->{$1} = $2;
 	    }
 	}
 	close(ASSF);
     }
-    else {
+    else
+    {
 	print STDERR "No existing assigned_functions in $assignF\n";
     }
     return $assignments;
 }
 
 sub update_annotations {
-    my ($oldOrgID,$newOrgID, $oldD,$newD, $corrH) = @_;
-    
-    my $annoL = [];
-    &load_annotations($oldD,$annoL);
-    &load_annotations($newD,$annoL);
-    
-    if (-s "$newD/annotations") {
-	rename("$newD/annotations","$newD/annotations~");
-	system('cp', "$newD/annotations~", "$newD/annotations")
-	    && die "Could not recopy \'$newD/annotations~\' to  \'$newD/annotations\'";
-	carp "renamed and copied";
-    }
+    my($oldD,$newD) = @_;
+
+    my $anno = {};
+    &load_annotations($oldD,$anno);
+    &load_annotations($newD,$anno);
+
+    if (-s "$newD/annotations") { rename("$newD/annotations","$newD/annotations~") }
     open(ANNO,">$newD/annotations") || die "could not open $newD/annotations";
-    carp "Write-opened $newD/annotations in update_annotations";
-    
-    foreach my $tuple (sort { ($a->[0] <=> $b->[0]) ||
-			       &SeedUtils::by_fig_id($a->[1], $b->[1])
-			   } @$annoL)
+    foreach my $ts (sort { $b <=> $a } keys(%$anno))
     {
-	my ($ts,$peg,$user,$anno) = @$tuple;
-	
-	if ($ts && $peg && $user && $anno) {
-	    next if ((&SeedUtils::genome_of($peg) eq $oldOrgID) && ($oldOrgID ne $newOrgID));
-	    unless (print ANNO (join("\n",($peg,$ts,$user,$anno)), "\n//\n")) {
-		die qq(Could not update annotation for user=$user, peg=$peg, time=$ts, anno=$anno);
-	    }
-	}
-	else {
-	    confess "Malformed annotation: user=$user, peg=$peg, anno=$anno";
-	}
+	my($peg,$user,$anno) = @{$anno->{$ts}};
+	print ANNO join("\n",($peg,$ts,$user,$anno)),"\n//\n";
     }
     close(ANNO);
 }
 
 sub load_annotations {
-    my($dir,$annoL) = @_;
-    
-    carp "Read-opening $dir/annotations in load_annotations";
+    my($dir,$anno) = @_;
+
     if (open(ANNO,"<$dir/annotations"))
     {
 	$/ = "\n//\n";
 	while (defined(my $_ = <ANNO>))
 	{
 	    chomp;
-	    my @lines = split(/\n|\r/,$_);
-	    my ($peg,$ts,$user,@rest) = @lines;
-	    
-	    if ($peg && $ts && $user) {
-		push @$annoL, [$ts,$peg,$user,join("\n",@rest)];
-	    }
-	    else {
-		confess ("Read malformed annotation at record=$.:\n$_", "==>\n", join("\n", @lines));
-	    }
+	    my @lines = split(/\n/,$_);
+	    my($peg,$ts,$user,@rest) = @lines;
+	    $anno->{$ts} = [$peg,$user,join("\n",@rest)];
 	}
 	close(ANNO);
     }
@@ -280,50 +180,44 @@ sub load_annotations {
 sub load_rewrite {
     my($file) = @_;
 
-    my $rewriteH = {};
-    if (open(REWRITES,"<$file")) {
-	while (defined($_ = <REWRITES>)) {
-	    if ($_ =~ /^(\S[^\t]+\S)\t(\S[^\t+]\S)$/) {
-		$rewriteH->{$1} = $2;
+    my $rewrite = {};
+    if (open(REWRITES,"<$file"))
+    {
+	while (defined($_ = <REWRITES>))
+	{
+	    if ($_ =~ /^(\S[^\t]+\S)\t(\S[^\t+]\S)$/)
+	    {
+		$rewrite->{$1} = $2;
 	    }
 	}
 	close(REWRITES);
     }
-    return $rewriteH;
-}
-
-sub update_rewrite {
-    my($rewriteH, $file) = @_;
-
-    if (open(REWRITES,">$file")) {
-	foreach my $rule (sort keys %$rewriteH) {
-	    print REWRITES ($rule, "\t", $rewriteH->{$rule}, "\n");
-	}
-	close(REWRITES);
-    }
+    return $rewrite;
 }
 
 sub get_correspondence {
     my($oldF,$newF) = @_;
-    
+
     my %old;
     my @old = &gjoseqlib::read_fasta($oldF);
-    foreach $_ (@old) {
+    foreach $_ (@old)
+    {
 	push @ { $old{$_->[2]} }, $_->[0];
     }
     
     my %new;
     my @new = &gjoseqlib::read_fasta($newF);
-    foreach $_ (@new) {
+    foreach $_ (@new)
+    {
 	push @ { $new{$_->[2]} }, $_->[0];
     }
     
     my $corrH = {};
-    foreach my $seqN (keys(%new)) {
-	if (defined($old{$seqN}) && defined($new{$seqN})) {
-	    if ((@ { $old{$seqN} } == 1) && (@ { $new{$seqN} } == 1)) {
-		$corrH->{$new{$seqN}->[0]} = $old{$seqN}->[0];
-	    }
+    foreach my $seqN (keys(%new))
+    {
+	if ((@ { $old{$seqN} } == 1) && (@ { $new{$seqN} } == 1))
+	{
+	    $corrH->{$new{$seqN}->[0]} = $old{$seqN}->[0];
 	}
     }
     return $corrH;

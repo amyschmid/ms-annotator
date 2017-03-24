@@ -55,7 +55,7 @@ foreach my $tuple (@contigs)
 {
     my($id,undef,$seq) = @$tuple;
     my $contig_ln = length($seq);
-    if ($contig_ln >= 2000)
+    if ($contig_ln >= 1000)
     {
 	my $id1   = join("_",($id,1,1000));
 	my $seq1  = substr($seq,0,1000);
@@ -67,6 +67,6 @@ foreach my $tuple (@contigs)
     else
     {
 	my $id1 = join("_",($id,1,$contig_ln));
-	print ">$id1\n$seq\n";
+	print "$id1\n$seq\n";
     }
 }

@@ -41,7 +41,6 @@ usage: svr_tree_to_html [options] < tree.newick > tree.html
                             or groups specified in a file     # table: [id group]
        -d   desc_file     - add description to each tip       # table: [id description]
        -f   focus_list    - highlight a list of tips          # table: [id]
-       -k   keep_list     - keep only the taxa listed         # table: [id]
        -l   link_file     - add URL to each tip               # table: [id URL]
        -lt  link_w_text   - add additional linked text        # table: [id text URL]
        -m   popup_file    - add simple mouseover to each tip  # table: [id popup]
@@ -57,7 +56,6 @@ usage: svr_tree_to_html [options] < tree.newick > tree.html
        -anno              - use the annotator's SEED for URLs
        -gray n            - gray out name from the n-th word  # default: 2
        -pseed             - use PSEED
-       -ppseed            - use PUBSEED
        -raw               - do not color or collapse tree,
                             may be superseded by -c and -p
 
@@ -105,10 +103,6 @@ appear in parentheses after the sequence ID for each tip of the tree.
 =item -f focus_list
 
 A file with space-delimited IDs for sequences to be highlighted.
-
-=item -k keep_list
-
-Keep only the taxa listed (one per line) in the file keep.
 
 =item -l link_file
 
@@ -168,12 +162,6 @@ With the -pseed option, the taxonomy and function information is
 retrieved from the PSEED server. Setting the environment variable
 SAS_SERVER to 'PSEED' has the same effect.
 
-=item -ppseed
-
-With the -ppseed option, the taxonomy and function information is
-retrieved from the PUBSEED server. Setting the environment variable
-SAS_SERVER to 'PUBSEED' has the same effect.
-
 =item -raw
 
 Do not color or collapse the tree. This option maybe superseded if -c
@@ -197,7 +185,6 @@ use SeedUtils;
 
 use ffxtree;
 use gjoalignment;
-use gjonewicklib;
 use gjoseqlib;
 
 my $usage = <<"End_of_Usage";
@@ -210,7 +197,6 @@ usage: svr_tree_to_html [options] < tree.newick > tree.html
                             or groups specified in a file     # file: [id group]
        -d   desc_file     - add description to each tip       # file: [id description]
        -f   focus_list    - highlight a list of tips          # file: [id]
-       -k   keep_list     - keep only the taxa listed         # table: [id]
        -l   link_file     - add URL to each tip               # file: [id URL]
        -lt  link_w_text   - add additional linked text        # file: [id text URL]
        -m   popup_file    - add simple mouseover to each tip  # file: [id popup]
@@ -225,15 +211,14 @@ usage: svr_tree_to_html [options] < tree.newick > tree.html
        -anno              - use the annotator's SEED for URLs
        -gray n            - gray out name from the n-th word  # default: 2
        -pseed             - use PSEED
-       -ppseed            - use PUBSEED
        -raw               - do not color or collapse the tree,
                             may be superseded by -c and -p
 
 End_of_Usage
 
 my ($help, $url, $alias_file, $focus_file, $branch, $collapse_by, $show_file,
-    $desc_file, $keep_file, $link_file, $text_link, $popup_file, $id_file, $title,
-    $min_dx, $dy, $ncolor, $color_by, $anno, $gray, $pseed, $ppseed, $raw);
+    $desc_file, $link_file, $text_link, $popup_file, $id_file, $title,
+    $min_dx, $dy, $ncolor, $color_by, $anno, $gray, $pseed, $raw);
 
 GetOptions("h|help"         => \$help,
            "a|alias=s"      => \$alias_file,
@@ -242,7 +227,6 @@ GetOptions("h|help"         => \$help,
            "d|desc=s"       => \$desc_file,
            "f|focus=s"      => \$focus_file,
            "i|id=s"         => \$id_file,
-           "k|keep=s"       => \$keep_file,
            "l|link=s"       => \$link_file,
            "lt=s"           => \$text_link,
            "m|popup=s"      => \$popup_file,
@@ -253,9 +237,8 @@ GetOptions("h|help"         => \$help,
            "x|dx=i"         => \$min_dx,
            "y|dy=i"         => \$dy,
            "anno"           => \$anno,
-           "g|gray=s"       => \$gray,
+           "g|gray=i"       => \$gray,
            "pseed"          => \$pseed,
-           "ppseed"         => \$ppseed,
            "raw"            => \$raw);
 
 $help and die $usage;
@@ -270,7 +253,6 @@ $opts->{alias}         = ffxtree::read_hash($alias_file)   if $alias_file    && 
 $opts->{color_by}      = ffxtree::read_hash($color_by)     if $color_by      && -s $color_by;
 $opts->{collapse_by}   = ffxtree::read_hash($collapse_by)  if $collapse_by   && -s $collapse_by;
 $opts->{collapse_show} = ffxtree::read_set($show_file)     if $show_file     && -s $show_file;
-$opts->{keep}          = ffxtree::read_set($keep_file)     if $keep_file     && -s $keep_file;
 $opts->{desc}          = ffxtree::read_hash($desc_file)    if $desc_file     && -s $desc_file;
 $opts->{popup}         = ffxtree::read_hash($popup_file)   if $popup_file    && -s $popup_file;
 $opts->{link}          = ffxtree::read_hash($link_file)    if $link_file     && -s $link_file;
@@ -294,11 +276,10 @@ $opts->{collapse_show} = 0 if $show_file           =~ /^none$/i;
 
 my $envParm = $ENV{SAS_SERVER};
 
-$ENV{SAS_SERVER} = 'PSEED'   if $pseed;
-$ENV{SAS_SERVER} = 'PUBSEED' if $ppseed;
+$ENV{SAS_SERVER} = 'PSEED' if $pseed;
 
 my $html = ffxtree::tree_to_html($opts);
 
-$ENV{SAS_SERVER} = $envParm if $pseed || $ppseed;
+$ENV{SAS_SERVER} = $envParm if $pseed;
 
 print $html;

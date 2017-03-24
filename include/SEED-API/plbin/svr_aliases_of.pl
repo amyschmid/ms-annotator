@@ -12,9 +12,7 @@ my $sapObject = SAPserver->new();
 
 =head1 svr_aliases_of
 
-Return all identifiers for genes in the database that are protein-sequence-equivalent to the specified identifiers. In this case, the identifiers are assumed to be in their natural form (without prefixes). For each identifier, the identified protein sequences will be found and then for each protein sequence, all identifiers for that protein sequence or for genes that produce that protein sequence will be returned.
-
-Alternatively, you can ask for identifiers that are precisely equivalent, that is, that identify the same location on the same genome.
+Get a list of aliases for protein-encoding genes
 
 ------
 Example: svr_all_features 3702.1 peg | svr_aliases_of
@@ -51,10 +49,6 @@ This is used only if the column containing PEGs is not the last.
 
 This is used to restrict the aliases being returned. Only aliases matching the regexp are returned.
 
-=item -precise
-
-Only identifiers that refer to the same location on the same genome will be returned. If this option is specified, identifiers that refer to proteins rather than features will return no result.
-
 =back
 
 =head2 Output Format
@@ -65,20 +59,17 @@ file with an extra column added (a comma-separated list of aliases).
 =cut
 
 
-my $usage = "usage: svr_aliases_of [-c column -r regexp -precise]";
+my $usage = "usage: svr_aliases_of [-c column -r regexp]";
 
 my $column;
 my $regexp;
-my $precise = 0;
 while ($ARGV[0] && ($ARGV[0] =~ /^-/))
 {
     $_ = shift @ARGV;
     if    ($_ =~ s/^-c//) { $column       = ($_ || shift @ARGV) }
     elsif ($_ =~ s/^-r//) { $regexp	  = ($_ || shift @ARGV) }
-    elsif ($_ =~ s/^-precise//) { $precise 	  = 1; next} 
     else                  { die "Bad Flag: $_" }
 }
-
 
 ScriptThing::AdjustStdin();
 my @lines = map { chomp; [split(/\t/,$_)] } <STDIN>;
@@ -96,8 +87,7 @@ sub get_aliases {
     my($sapObject,$pegs, $regexp) = @_;
     
     my $aliases = {};
-    my $aliasHash;
-    $aliasHash = $sapObject->equiv_sequence_ids(-ids => $pegs,  -precise => $precise);
+    my $aliasHash = $sapObject->equiv_sequence_ids(-ids => $pegs);
     foreach my $peg (@$pegs)
     {
 	my $aliasList = $aliasHash->{$peg} || [];

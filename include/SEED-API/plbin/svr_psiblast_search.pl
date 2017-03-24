@@ -36,8 +36,7 @@ genomes, and writes the extracted regions of hits to the standard output.
 
 usage: svr_psiblast_search [options] < ali.trimmed.fa > hits.fa
 
-       -a   n_processor     - number of processors to use (D = 2)
-       -b   database        - database to search against: SEED (D), PSEED, PUBSEED, FASTA file name, FIG genome ID
+       -b   database        - database to search against: SEED (D), PSEED, FASTA file name, FIG genome ID
        -c   min_frac_cov    - minimum fraction coverage of query and subject sequence (D = 0.20)
        -cq  min_q_cov       - minimum fraction coverage of query sequence (D = 0.50)
        -cs  min_s_cov       - minimum fraction coverage of subject sequence (D = 0.20)
@@ -65,16 +64,13 @@ usage: svr_psiblast_search [options] < ali.trimmed.fa > hits.fa
 
 =over 4
 
-=item -a n_processor
-
-Number of processors to use (D = 2)
-
 =item -b database
 
 Database for psiblast to search against. It can be a FASTA file name,
-a FIG genome ID, or a string, SEED, PSEED or PUBSEED, to indicate one of the
+a FIG genome ID, or a string, SEED or PSEED, to indicate one of the
 preconfigured database of all protein sequences from complete
 genomes. The default is SEED.
+
 
 =item -c min_frac_cov
 
@@ -207,8 +203,7 @@ my $usage = <<"End_of_Usage";
 
 usage: svr_psiblast_search [options] < ali.trimmed.fa > hits.fa
 
-       -a   n_processor     - number of processors to use (D = 2)
-       -b   database        - database to search against: SEED (D), PSEED, PUBSEED, FASTA file name, FIG genome ID
+       -b   database        - database to search against: SEED (D), PSEED, FASTA file name, FIG genome ID
        -c   min_frac_cov    - minimum fraction coverage of query and subject sequence (D = 0.20)
        -cq  min_q_cov       - minimum fraction coverage of query sequence (D = 0.50)
        -cs  min_s_cov       - minimum fraction coverage of subject sequence (D = 0.20)
@@ -250,12 +245,11 @@ End_of_Usage
 
 
 my ($help, $local, $url, $db, $report_f, $max_e_val, $min_ident, $min_pos, $cov, $cq, $cs,
-    $nres, $nthread, $uncov, $uc, $un, $inc, $min_reps, $reps, $sim, $stop, $max_nq, $fast);
+    $nres, $uncov, $uc, $un, $inc, $min_reps, $reps, $sim, $stop, $max_nq, $fast);
 
 GetOptions("h|help"   => \$help,
-           "l|local"  => \$local, 
+           "l|local"  => \$local,
            "url=s"    => \$url,
-           "a=i"      => \$nthread,
            "b|db=s"   => \$db,
            "c|cov=f"  => \$cov,
            "cq=f"     => \$cq,
@@ -291,7 +285,6 @@ $opts->{min_s_cov}         = $cs        if $cs;
 $opts->{min_ident}         = $min_ident if $min_ident;
 $opts->{min_positive}      = $min_pos   if $min_pos;
 $opts->{nresult}           = $nres      if $nres;
-$opts->{nthread}           = $nthread   if $nthread;
 $opts->{report}            = 1          if $report_f; 
 $opts->{incremental}       = 1          if $inc;
 $opts->{use_reps}          = 1          if $reps;
@@ -321,7 +314,7 @@ if ($local) {
 }
 
 if ($opts->{report}) {
-    my $report_string = join("\n", map { join "\t", @$_ } sort { $b->[1] <=> $a->[1] } values %$report) . "\n";
+    my $report_string = join("\n", map { join "\t", @$_ } values %$report) . "\n";
     AlignTree::print_string($report_f, $report_string);
 }
 

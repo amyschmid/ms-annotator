@@ -39,7 +39,7 @@ $sched->$FunctionName(@Data);
 package scheduler;
 
 sub new {
-	my $self = {_figmodel => ModelSEED::FIGMODEL->new("master")};
+	my $self = {_figmodel => FIGMODEL->new("master")};
     return bless $self;
 }
 
@@ -136,12 +136,6 @@ sub monitor {
 					$runningCount++;
 				}
 			}
-            my $takenExclusiveKeys = {};
-            foreach my $job (@$stillRunning) {
-                if(defined($job) && defined($job->EXCLUSIVEKEY())) {
-                    $takenExclusiveKeys->{$job->EXCLUSIVEKEY()} = 1;
-                }
-            }
 			#Checking if processors are available
 			if ($runningCount < $maxProcesses && defined($queued) && @{$queued} > 0) {
 				my $jobSlotsRemaining = $maxProcesses - $runningCount;
@@ -154,8 +148,6 @@ sub monitor {
 								last;
 							} else {
 								my $object = $queued->[$j];
-                                next if(defined($object) && defined($object->EXCLUSIVEKEY()) &&
-                                    defined($takenExclusiveKeys->{$object->EXCLUSIVEKEY()}));
 								if (defined($object) && $object->PRIORITY() == $m) {
 									$object->START($self->timestamp());
 									if ($object->COMMAND() =~ m/HALTALLJOBS/) {
@@ -165,9 +157,6 @@ sub monitor {
 										$self->haltalljobs();
 										return;
 									} else {
-                                        if(defined($object->EXCLUSIVEKEY())) {
-                                            $takenExclusiveKeys->{$object->EXCLUSIVEKEY()} = 1;
-                                        }
 										$jobSlotsRemaining--;
 										$runningCount++;
 										$object->STATE(1);
@@ -196,7 +185,7 @@ sub monitor {
 				}
 			}
 			print "Sleeping...\n";
-			sleep(30);
+			sleep(180);
 		}
 	}
 }
@@ -277,6 +266,7 @@ sub delete {
 
 sub haltalljobs {
     my($self,@Data) = @_;
+    
 	#Clearing the queued and running jobs
 	my $objects = $self->jobdb()->get_objects();
     for (my $i=0; $i < @{$objects}; $i++) {
