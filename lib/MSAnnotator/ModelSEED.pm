@@ -11,14 +11,15 @@ use MSAnnotator::KnownAssemblies qw(update_known get_known_assemblies);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(ms_checkjobs);
+our @EXPORT_OK = qw(ms_modelrecon);
 
 # Globals
 my $modelseed_url = "http://p3c.theseed.org/dev1/services/ProbModelSEED";
+my $workspace_url = "http://p3.theseed.org/services/Workspace";
 my $fba_url = "http://bio-data-1.mcs.anl.gov/services/ms_fba";
 my $auth_url = "http://tutorial.theseed.org/Sessions/Login";
 my $credential_file = "credentials.yaml";
-my $token = authenticate();
+my ($user, $token) = authenticate();
 
 sub authenticate {
   # Mimicing the login method found here:
@@ -46,11 +47,11 @@ sub authenticate {
     croak "Error - ModelSEED authentication failed: $error\n";
   }
 
-  return $token;
+  return ($user, $token);
 }
 
 sub ms_checkjobs {
-  # Returns a hash of keyed by id:
+  # Returns a hash of keyed by modelseed_id:
   #   app: RunProbModelSEEDJob
   #   status: completed or failed
   #   submit_time: 2017-03-07T15:03:15.496-06:00
@@ -68,14 +69,13 @@ sub ms_checkjobs {
   #       output_file: modelseed_name
   #       media: /chenry/public/modelsupport/media/Complete
   #       genome: rast_taxid
-
-  my $ua = LWP::UserAgent->new;
   my $request = {
     version => '1.1',
     method => 'ProbModelSEED.CheckJobs',
     params => [{}]
   };
 
+  my $ua = LWP::UserAgent->new;
   my $res = $ua->post(
     $modelseed_url,
     Authorization => $token,
@@ -93,7 +93,6 @@ sub ms_checkjobs {
   if ($error) {
     croak "Error - ModelSEED CheckJobs failed: $error\n";
   }
-
   return $ret;
 }
 
@@ -110,14 +109,13 @@ sub ms_checkrast {
   #   owner:         user
   #   project:       usr_taxid
   #   type:          Genome
-
-  my $ua = LWP::UserAgent->new;
   my $request = {
     version => '1.1',
     method => 'MSSeedSupportServer.list_rast_jobs',
     params => [{}]
   };
 
+  my $ua = LWP::UserAgent->new;
   my $res = $ua->post(
     $fba_url,
     Authorization => $token,
@@ -133,7 +131,7 @@ sub ms_checkrast {
 
   # Ensure things went well
   if ($error) {
-    croak "Error - ModelSEED CheckJobs failed: $error\n";
+    croak "Error - ModelSEED CheckRast failed: $error\n";
   }
 
   # Have array of hashes, return hash keyed by rast_jobid
@@ -142,8 +140,75 @@ sub ms_checkrast {
   return \%ret_hash;
 }
 
+sub ms_downloadlinks {
+  # Given ModelSEED analysis name
+  # Return value is array of files ready to download
+  my $msname = shift;
+  my @filetypes = (".sbml", ".cpdtbl", ".rxntbl");
+  my @filenames = map { "/$user/modelseed/$msname/$msname" . $_ } @filetypes;
+  my $request = {
+    version => '1.1',
+    method => 'Workspace.get_download_url',
+    params => [{objects => [@filenames]}]
+  };
 
+  my $ua = LWP::UserAgent->new;
+  my $res = $ua->post(
+    $workspace_url,
+    Authorization => $token,
+    Content => encode_json($request));
 
+  my ($ret, $error);
+  if ($res->is_success) {
+    eval { $ret = decode_json($res->content)->{result}->[0] };
+    $error = "Could parse request" if $@ or !$ret;
+  } else {
+    $error = $res->status_line;
+  }
 
+  # Ensure things went well
+  if ($error) {
+    croak "Error - ModelSEED DownloadLinks failed: $error\n";
+  }
+
+  return $ret;
+}
+
+sub ms_modelrecon {
+  # Given a rast_taxid instructs modelseed to reconstruct metabolic model
+  # Returns modelseed_id
+  my $rast_taxid = shift;
+  my $request = {
+    version => '1.1',
+    method => 'ProbModelSEED.ModelReconstruction',
+    params => [{
+        genome => "RAST:$rast_taxid",
+        output_file => "MS$rast_taxid",
+        media => '/chenry/public/modelsupport/media/Complete'}]
+  };
+
+  my $ua = LWP::UserAgent->new;
+  my $res = $ua->post(
+    $modelseed_url,
+    Authorization => $token,
+    Content => encode_json($request));
+
+  say Dumper $res;
+
+  my ($ret, $error);
+  if ($res->is_success) {
+    eval { $ret = decode_json($res->content)->{result}->[0] };
+    $error = "Could parse request" if $@ or !$ret;
+  } else {
+    $error = $res->status_line;
+  }
+
+  # Ensure things went well
+  if ($error) {
+    croak "Error - ModelSEED ModelReconstruction failed: $error\n";
+  }
+
+  return $ret
+}
 
 1;
