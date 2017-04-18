@@ -10,26 +10,28 @@ use MSAnnotator::Config;
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(update_known get_tasks get_known_assemblies);
+our @EXPORT_OK = qw(update_known get_known_assemblies query_rast_jobids);
 
 # Order does not matter
 # Any all columns can be added or removed except:
-#   rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
-# Note that rast_jobid is used as a primary key
+#   asmid, rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
+#
+# Note that asmid is used as a primary key
 # Values for all other keys are added via the assembly hash
 use constant COLUMN_HEADER => (
-  "assembly",
+  "asmid",
   "rast_jobid",
   "rast_taxid",
   "rast_result",
   "modelseed_id",
+  "modelseed_name",
   "modelseed_result",
-  "organism_name",
   "taxid",
   "species_taxid",
   "version_status",
   "assembly_level",
   "refseq_category",
+  "local_path",
   "ftp_path");
 
 # Convert to array
@@ -61,16 +63,13 @@ my $insert_sth = $dbh->prepare(
 
 # Update whole row with given rast_jobid
 my $update_sth = $dbh->prepare(
-  "UPDATE $known_table SET " . join(" = ?, ", @column_header) . " = ? " .
-  "WHERE rast_jobid = ?");
-
-# Fetch via rast_jobid
-my $query_rastjob_sth= $dbh->prepare(
-  "SELECT * FROM $known_table WHERE rast_jobid = ?");
+  "UPDATE $known_table " .
+  "SET " . join(" = ?, ", @column_header) . " = ? " .
+  "WHERE asmid = ?");
 
 # Fetch via assembly
-my $query_assembly_sth= $dbh->prepare(
-  "SELECT * FROM $known_table WHERE assembly = ?");
+my $query_asmid_sth= $dbh->prepare(
+  "SELECT * FROM $known_table WHERE asmid = ?");
 
 sub do_insert_known {
   my ($vals) = @_;
@@ -81,120 +80,85 @@ sub do_insert_known {
 }
 
 sub do_update_known {
-  my ($id, $vals) = @_;
+  # Update known given an asmid, ensures asmid column is updated
+  my ($asmid, $values) = @_;
+  delete $values->{asmid} if exists $values->{asmid};
   chmod 0660, $known_filename;
-  $update_sth->execute(@{$vals}{@column_header}, $id);
+  $update_sth->execute(@{$values}{@column_header}, $asmid);
   $update_sth->finish;
   chmod 0440, $known_filename;
 }
 
+sub add_known {
+  # Given a hash keyed by asmid containing valid column types
+  # Adds new row containing new values
+  # Returns hash of values added
+
+
+
+}
+
 sub update_known {
-  # Given a rast_jobid, and hash of values to be added
-  # Adds new row if rast_jobid does not exit, otherwise updates existing row
-  my ($id, $vals) = @_;
-  $query_rastjob_sth->execute($id);
-
-  # Ensure rast_jobid is unique
-  my $nrows = $query_rastjob_sth->rows;
-
-  # Add to file no rows are retured otherwise, get current row and update
-  if ($nrows == 0) {
-    do_insert_known({rast_jobid => $id, %{$vals}});
-  } elsif ($nrows == 1) {
-    my %res = %{$query_rastjob_sth->fetchrow_hashref};
-    for (keys %{$vals}) {
-      $res{$_} = $vals->{$_} if $_ ~~ @column_header;
+  # Given a hash of keyed by asmid containing valid column types
+  # updates the row associated with the supplyed asmid or adds
+  # new row if the asmid is not in known_assemblies
+  # Will exit with error if asmid is not found
+  my $asmids = shift;
+  for my $asmid (keys %{$asmids}) {
+    if (!exists $known->{$asmid}) {
+      croak "Error - Could not determine assembly id for asmid: $asmid\n";
     }
-    do_update_known($id, \%res);
-  } else {
-    carp "Error - Multiple entries for jobid: $id" if $nrows > 1;
+    do_update_known($asmid, $asmids->{$asmid});
   }
-  $query_rastjob_sth->finish;
 }
 
 sub get_known_assemblies {
-  # Given a ref of jobids, returns a hash of associated assembly ids
-  # This is likely a many to one relationship
-  my $jobids = shift;
-  my %ret;
-  for my $jobid (@{$jobids}) {
-    $query_rastjob_sth->execute($jobid);
-    if ($query_rastjob_sth->rows == 1) {
-      my $res = $query_rastjob_sth->fetchrow_hashref;
-      $ret{$jobid} = $res->{assembly};
-    } elsif ($query_rastjob_sth->rows > 1) {
-      croak "Error - Found > 1 assemblies for rast_jobid: $jobid\n";
-    } else {
-      croak "Error - Could not determine assembly id for rast_jobid: $jobid\n";
-    }
-  }
-  return \%ret;
-}
-
-
-sub get_known_jobids {
-  # Given an array of asmids, returns a hash of hashes keyed by assembly
-  # Each sub-hash is keyed by rast_jobid and contains values for:
-  #   rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
-  # This can be a one to many relationship
-  my @asmids = @_;
-  my @task_list = qw(
-    rast_jobid rast_taxid rast_result
-    modelseed_id modelseed_result);
-
-  my %ret;
-  for my $asmid (@asmids) {
-    $query_assembly_sth->execute($asmid);
-    if ($query_assembly_sth->rows == 0) {
-      $ret{$asmid} = undef;
-    } else {
-      my %ids;
-      while (my $res = $query_assembly_sth->fetchrow_hashref) {
-        $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @task_list };
-      }
-      $ret{$asmid} = { %ids };
-    }
-  }
-  return \%ret;
-}
-
-sub get_tasks {
-  # Given a array of asmids
-  # Returns a hash of the following form:
-  #   needs_rast         => (asmids)
-  #   pending_rast       => (rast_jobids)
-  #   complete_rast      => (rast_jobids)
-  #   needs_modelseed    => (rast_jobids)
-  #   pending_modelseed  => (rast_jobids)
-  #   complete_modelseed => (rast_jobids)
-  #
-  # known_assemblies are parsed as follows
-  #   needs_rast:         asmids without rast_jobids
-  #   pending_rast:       rast_jobids without rast_result
-  #   complete_rast:      rast_jobids with a rast_result
-  #   needs_modelseed:    rast_taxid without modelseed_id
-  #   pending_modelseed:  modelseed_id without smbl file
-  #   complete_modelseed: has smbl file
+  # Given a list of asmids, returns hash of all rows of know_assemblies
+  # Returned hash of values keyed by asmid
   my @asmids = @_;
   my %ret;
+  # TODO Run query and return hash of asmid by values
+  $query_asmid_sth->execute(@asmids);
 
-  my $known_asmids = get_known_jobids(@asmids);
-  for my $asmid (keys %{$known_asmids}) {
-    my $known_asm = $known_asmids->{$asmid};
-    if (!$known_asm) {
-      push @{$ret{needs_rast}}, $asmid;
-    } else {
-      while (my ($jobid, $asm) = each %{$known_asm}) {
-        push @{$ret{complete_rast}}, $jobid if $asm->{rast_result};
-        push @{$ret{complete_modelseed}}, $jobid if $asm->{modelseed_result};
-        push @{$ret{needs_modelseed}}, $jobid if !$asm->{modelseed_id};
-        push @{$ret{pending_rast}}, $jobid if !$asm->{rast_result};
-        push @{$ret{pending_modelseed}}, $jobid if
-        $asm->{modelseed_id} && !$asm->{modelseed_result};
-      }
-    }
-  }
+
+  #for my $asmid (@{$asmids}) {
+  #  if ($query_asmid_sth->rows == 1) {
+  #    my $ret{$asmid} = %{$query_asmid_sth->fetchrow_hashref};
+  #  } elsif ($query_asmid_sth->rows > 1) {
+  #    croak "Error - Found > 1 assemblies for asmid: $asmid\n";
+  #  } else {
+  #    croak "Error - Could not determine assembly id for asmid: $asmid\n";
+  #  }
+  #}
   return \%ret;
 }
+
+
+#sub query_rast_jobids {
+#  # Given an array of asmids, returns a hash of hashes keyed by assembly
+#  # Each sub-hash is keyed by rast_jobid and contains values for:
+#  #   rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
+#  # This can be a one to many relationship
+#  my @asmids = @_;
+#  my @field_list = qw(
+#    rast_jobid rast_taxid rast_result
+#    modelseed_id modelseed_result
+#  );
+#
+#  my %ret;
+#  for my $asmid (@asmids) {
+#    $query_assembly_sth->execute($asmid);
+#    if ($query_assembly_sth->rows == 0) {
+#      $ret{$asmid} = undef;
+#    } else {
+#      my %ids;
+#      while (my $res = $query_assembly_sth->fetchrow_hashref) {
+#        $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @field_list };
+#      }
+#      $ret{$asmid} = { %ids };
+#    }
+#  }
+#  return \%ret;
+#}
 
 1;

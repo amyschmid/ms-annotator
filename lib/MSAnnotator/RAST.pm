@@ -12,7 +12,7 @@ use MSAnnotator::KnownAssemblies qw(update_known get_known_assemblies);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(rast_submit rast_get_results);
+our @EXPORT_OK = qw(rast_submit rast_check_jobs rast_get_results);
 
 # Constants
 use constant genbank_suffix => "_genomic.gbff";
@@ -64,7 +64,6 @@ sub rast_submit {
   #   --kmerDataset      => Which set of FIGfam Kmers to use (def: 'Release70')
   #   --fix_frameshifts  => Attempt to reconstruct frameshifts errors
   #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
-
   my ($asmids, $assemblies) = @_;
   my %opts = (
     -filetype => 'genbank',
@@ -109,7 +108,7 @@ sub rast_get_complete {
   my $jobids = shift;
   my @ret;
 
-  # Make connection and coak if not OK
+  # Make connection and croak if not OK
   my $stat = $rast_client->status_of_RAST_job({-job => $jobids});
   for my $jobid (@{$jobids}) {
     if ($stat->{$jobid}->{status} eq "complete") {
@@ -137,6 +136,10 @@ sub rast_get_rastid {
   }
   croak "Error - Could not determine rast_taxid for: $file" unless $ret;
   return $ret;
+}
+
+sub rast_check_jobs {
+  # ...
 }
 
 sub rast_get_results {

@@ -50,7 +50,7 @@ sub authenticate {
   return ($user, $token);
 }
 
-sub ms_checkjobs {
+sub ms_check_jobs {
   # Returns a hash of keyed by modelseed_id:
   #   app: RunProbModelSEEDJob
   #   status: completed or failed
@@ -96,7 +96,7 @@ sub ms_checkjobs {
   return $ret;
 }
 
-sub ms_checkrast {
+sub ms_check_rast {
   # Returns hash of rast analyses as seen by MS keyed by rast_jobid
   # Example return value:
   #   contig_count:  int or null
@@ -210,5 +210,32 @@ sub ms_modelrecon {
 
   return $ret
 }
+
+sub submit_modelrecon {
+  # Given rast_jobid
+  # Submits model reconstruction and returns modelseed_id
+  my $rast_taxids = shift;
+  for my $rast_taxid (@{$rast_taxids}) {
+    my $modelseed_id = ms_modelrecon($rast_taxid);
+    update_known($rast_taxid, {modelseed_id => $modelseed_id});
+  }
+}
+
+#sub ms_get_results {
+#  # Given array of modelseed_ids and checks status of job
+#  # If the job is complete, gets model name, and downloads results
+#  # Otherwise denotes "failed" in modelseed_result field of known_asmids
+#  my @modelseed_ids = @_;
+#  my $jobs = ms_checkjobs();
+#
+#  my $error;
+#  for my $msid (@modelseed_ids) {
+#    croak "Error: ModelSEED cannot find jobid $msid" if !exists $jobs->{$msid};
+#    my %job = %{$jobs->{msid}};
+#    if ($job{'status'} eq 'complete') {
+#      my $jobname = $job{parameters}{output_file};
+#      my @urls = ms_downloadlinks($jobnames);
+#      for my $url in (@urls) {
+#
 
 1;
