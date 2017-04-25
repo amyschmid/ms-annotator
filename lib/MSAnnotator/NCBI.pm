@@ -8,11 +8,12 @@ use Clone 'clone';
 # Load custom modukes
 use MSAnnotator::Base;
 use MSAnnotator::Util qw(download_url download_check);
+use MSAnnotator::KnownAssemblies qw(update_known add_known);
 
 # Export functions
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(get_assemblies download_assemblies);
+our @EXPORT_OK = qw(get_input_asmids get_new_asmids download_asmids);
 
 # Header in expected order
 use constant ASSEMBLY_HEADER => (
@@ -84,8 +85,9 @@ sub load_ncbi_assemblies {
   return \%ret;
 }
 
-sub get_assemblies {
-  # Returns list of assemblies associated with all any / all taxids entered
+sub get_input_asmids {
+  # Given output of load_config
+  # Returns list of assemblies associated with any/all taxids entered
   # First all species_taxid are identified, then all assemblies are returned
   my $config = shift;
 
@@ -118,47 +120,79 @@ sub get_assemblies {
   return \%keep;
 }
 
-sub download_assembly {
-  # Download assembly from NCBI
-  # Available filetypes:
-  #
-  my ($asmid, $baseurl, $download_path) = @_;
+#sub get_needed_asmids {
+#  # Given config and list of asmids, checks known_assemblies file, and
+#  # Returns list of new asmids
+#  my (%config, $input_asmids)
+#}
+
+sub download_asmid {
+  my %params = @_;
+  my $asmid = $params{asmid};
+  my $local_path = $params{local_path};
+  my @filetypes = $params{filetypes};
+  my $ftp_path = $params{ftp_path};
+
+  # Ensure path exists and is writable
+  if ( -e $local_path) {
+    chmod 0750, $local_path;
+  } else {
+    make_path($local_path) or
+      croak "Error - Could not create: $local_path";
+  }
+
+  # Loop through filetypes, download, and check md5
+  for my $ftype(@filetypes) {
+    my $filename = $local_path . "/" . $asmid . $ftype;
+    my $url = $ftp_path . "/" . $asmid . $ftype;
+    download_url($url, $filename);
+    chmod 0440, $filename;
+  }
+  chmod 0550, $local_path;
+  return $asmid
+}
+
+sub download_asmids {
+  # Takes config file and list of asmids
+  # Downloads filetypes to 'local_path' and updates known_assemblies
+  # Available filetypes can be found here:
+  #   ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt
+  my ($config, $asmids) = @_;
   my @filetypes = (
     "_assembly_report.txt",
     "_assembly_stats.txt",
     "_genomic.gbff.gz");
 
-  # Ensure path exists and is writable
-  if ( -e $download_path) {
-    chmod 0750, $download_path;
-  } else {
-    make_path($download_path) or
-      croak "Error - Could not create: $download_path";
-  }
-
-  # Loop through filetypes, download, and check md5
-  for my $ft (@filetypes) {
-    my $filename = $download_path . "/" . $asmid . $ft;
-    my $url = $baseurl . "/" . $asmid . $ft;
-    download_check($url, $filename);
-    chmod 0440, $filename;
-  }
-  chmod 0550, $download_path;
-}
-
-sub download_assemblies {
-  my ($config, $assemblies) = @_;
+  # Download assemblies
   my $pm = new Parallel::ForkManager(10);
-  for my $asmid (keys %{$assemblies}) {
+  for my $asmid (keys %{$asmids}) {
     $pm->start and next;
-    download_assembly(
-      $asmid,
-      $assemblies->{$asmid}->{ftp_path},
-      $assemblies->{$asmid}->{local_path} . "/NCBI");
+    download_asmid(
+      asmid => $asmid,
+      filetypes => @filetypes,
+      ftp_path => $asmids->{$asmid}->{ftp_path},
+      local_path => $asmids->{$asmid}->{local_path} . "/NCBI");
     $pm->finish;
   }
   $pm->wait_all_children;
-  return $assemblies;
+
+  # All asmids downloaded update known_assemblies
+  add_known($asmids);
 }
 
+sub get_new_asmids {
+  # Given hash all input rows from assembly_summary and
+  # hash of previously seen asmids
+  # Returns subset of input rows that are missing
+  my ($input, $known) = @_;
+  my %ret;
+  if ($known) {
+    for my $asmid (keys %$input) {
+      $ret{$asmid} = clone($input->{$asmid}) if !exists $known->{$asmid};
+    }
+  } else {
+    %ret = clone($input);
+  }
+  return \%ret;
+}
 1;

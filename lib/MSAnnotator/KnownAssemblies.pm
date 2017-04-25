@@ -10,7 +10,7 @@ use MSAnnotator::Config;
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(update_known get_known_assemblies query_rast_jobids);
+our @EXPORT_OK = qw(update_known add_known get_known);
 
 # Order does not matter
 # Any all columns can be added or removed except:
@@ -68,7 +68,7 @@ my $update_sth = $dbh->prepare(
   "WHERE asmid = ?");
 
 # Fetch via assembly
-my $query_asmid_sth= $dbh->prepare(
+my $query_asmids_sth= $dbh->prepare(
   "SELECT * FROM $known_table WHERE asmid = ?");
 
 sub do_insert_known {
@@ -89,76 +89,56 @@ sub do_update_known {
   chmod 0440, $known_filename;
 }
 
-sub add_known {
-  # Given a hash keyed by asmid containing valid column types
-  # Adds new row containing new values
-  # Returns hash of values added
-
-
-
-}
-
-sub update_known {
-  # Given a hash of keyed by asmid containing valid column types
-  # updates the row associated with the supplyed asmid or adds
-  # new row if the asmid is not in known_assemblies
-  # Will exit with error if asmid is not found
-  my $asmids = shift;
-  for my $asmid (keys %{$asmids}) {
-    if (!exists $known->{$asmid}) {
-      croak "Error - Could not determine assembly id for asmid: $asmid\n";
-    }
-    do_update_known($asmid, $asmids->{$asmid});
-  }
-}
-
-sub get_known_assemblies {
+sub get_known {
   # Given a list of asmids, returns hash of all rows of know_assemblies
-  # Returned hash of values keyed by asmid
+  # Return hash is keyed by asmid
   my @asmids = @_;
   my %ret;
-  # TODO Run query and return hash of asmid by values
-  $query_asmid_sth->execute(@asmids);
-
-
-  #for my $asmid (@{$asmids}) {
-  #  if ($query_asmid_sth->rows == 1) {
-  #    my $ret{$asmid} = %{$query_asmid_sth->fetchrow_hashref};
-  #  } elsif ($query_asmid_sth->rows > 1) {
-  #    croak "Error - Found > 1 assemblies for asmid: $asmid\n";
-  #  } else {
-  #    croak "Error - Could not determine assembly id for asmid: $asmid\n";
-  #  }
-  #}
+  for my $asmid (@asmids) {
+    $query_asmids_sth->execute($asmid);
+    while (my $res = $query_asmids_sth->fetchrow_hashref) {
+      $ret{$res->{asmid}} = clone($res);
+    }
+  }
   return \%ret;
 }
 
+sub add_known {
+  # Given a hashref keyed by asmid containing valid column types
+  # Adds new row containing values from hash
+  # Will exit with error if asmid already exists
+  my $asmids = shift;
 
-#sub query_rast_jobids {
-#  # Given an array of asmids, returns a hash of hashes keyed by assembly
-#  # Each sub-hash is keyed by rast_jobid and contains values for:
-#  #   rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
-#  # This can be a one to many relationship
-#  my @asmids = @_;
-#  my @field_list = qw(
-#    rast_jobid rast_taxid rast_result
-#    modelseed_id modelseed_result
-#  );
-#
-#  my %ret;
-#  for my $asmid (@asmids) {
-#    $query_assembly_sth->execute($asmid);
-#    if ($query_assembly_sth->rows == 0) {
-#      $ret{$asmid} = undef;
-#    } else {
-#      my %ids;
-#      while (my $res = $query_assembly_sth->fetchrow_hashref) {
-#        $ids{$res->{rast_jobid}} = { map { $_ => $res->{$_} } @field_list };
-#      }
-#      $ret{$asmid} = { %ids };
-#    }
-#  }
-#  return \%ret;
-#}
+  # Ensure asmid is present in hash
+  for my $asmid (keys %$asmids) {
+    $asmids->{$asmid}->{asmid} = $asmid if !exists $asmids->{$asmid}->{asmid};
+  }
+
+  # Check known assemblies
+  my $known = get_known(keys %$asmids);
+  my @found = map { $_ if exists($known->{$_}) } keys %$known;
+  my $err = "Error: Found already existing entry for: ". join("\n  ", @found);
+  croak $err if (scalar(@found) > 0);
+
+  # Add values
+  do_insert_known($_) for values(%$asmids);
+}
+
+sub update_known {
+  # Given a hashref of keyed by asmid containing valid column types
+  # updates the row associated with the supplied asmid
+  # Will exit with an error if no asmids are found
+  my $asmids = $_;
+
+  # Check known assemblies
+  my $known = get_known(keys %$asmids);
+  my @missing = map { $_ if !exists($known->{$_}) } keys %$known;
+  my $err = "Error: Found missing entry for: ". join("\n  ", @missing);
+  croak $err if (scalar(@missing) > 0);
+
+  # Update values
+  do_update_known($_) for each %$known;
+}
+
 
 1;

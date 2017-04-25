@@ -18,7 +18,6 @@ state of submissions and is used to determine what tasks are needed to run.
 As such, this file should not be written to or eddited as doing so could 
 corupt the workflow.
 
-
 ### Submission status and ids
 In addtion to some fields form NCBI's `assembly_summary.txt`, 
 `know_assemblies` contains the following fields:
@@ -69,27 +68,34 @@ fields will be labeled as `failed` and the associated `assembly` will be ignored
 The wrapper will repeatedly run the perl scripts until either an 
 error is reached or all jobs have ended.
 
+### Data sources
+Primary data is downloaded from NCBI genbank repository
+See the README [ftp://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt]
+for more details.
+
 ## Command line options
---remove asmid, rast_jobid, or ms_id
---config location of config
---auth   location of auth yaml
---test   launch tests
+--remove        asmid, rast_jobid, or ms_id
+--check-updates check for updates to given taxids
+--config        location of config
+--auth          location of auth yaml
+--test          launch tests
 
 ## Report
 Documenting result of run
-  new asmids
-  rast submissions
-  rast completed
-  modelseed competed
+  asmids     total
+  asmids     new
 
-  rast failed
-  modelseed failed
+  rast       in-progress
+  modelseed  in-progress
 
-  rast in-progress
-  modelseed in-progress
+  rast       new submissions
+  modelseed  new submissions
 
-  rast in-queue
-  modelseed in-queue
+  rast       total completed
+  modelseed  total competed
+
+  rast       total failed
+  modelseed  total failed
 
 ## Output 
 
