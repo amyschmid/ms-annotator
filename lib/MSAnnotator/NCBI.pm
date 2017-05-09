@@ -8,12 +8,12 @@ use Clone 'clone';
 # Load custom modukes
 use MSAnnotator::Base;
 use MSAnnotator::Util qw(download_url download_check);
-use MSAnnotator::KnownAssemblies qw(update_known add_known);
+use MSAnnotator::KnownAssemblies qw(update_known add_known get_known);
 
 # Export functions
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(get_input_asmids get_new_asmids download_asmids);
+our @EXPORT_OK = qw(get_input_asmids get_new_asmids add_asmids);
 
 # Header in expected order
 use constant ASSEMBLY_HEADER => (
@@ -87,7 +87,7 @@ sub load_ncbi_assemblies {
 
 sub get_input_asmids {
   # Given output of load_config
-  # Returns list of assemblies associated with any/all taxids entered
+  # Returns hash of asmids associated with any/all taxids entered
   # First all species_taxid are identified, then all assemblies are returned
   my $config = shift;
 
@@ -120,18 +120,12 @@ sub get_input_asmids {
   return \%keep;
 }
 
-#sub get_needed_asmids {
-#  # Given config and list of asmids, checks known_assemblies file, and
-#  # Returns list of new asmids
-#  my (%config, $input_asmids)
-#}
-
 sub download_asmid {
   my %params = @_;
   my $asmid = $params{asmid};
   my $local_path = $params{local_path};
-  my @filetypes = $params{filetypes};
   my $ftp_path = $params{ftp_path};
+  my @filetypes = @{$params{filetypes}};
 
   # Ensure path exists and is writable
   if ( -e $local_path) {
@@ -152,26 +146,26 @@ sub download_asmid {
   return $asmid
 }
 
-sub download_asmids {
+sub add_asmids {
   # Takes config file and list of asmids
   # Downloads filetypes to 'local_path' and updates known_assemblies
   # Available filetypes can be found here:
   #   ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt
   my ($config, $asmids) = @_;
   my @filetypes = (
-    "_assembly_report.txt",
-    "_assembly_stats.txt",
-    "_genomic.gbff.gz");
+    "_assembly_report.txt", "_assembly_stats.txt",
+    "_genomic.fna.gz", "_genomic.gbff.gz", "_genomic.gff.gz");
 
   # Download assemblies
   my $pm = new Parallel::ForkManager(10);
   for my $asmid (keys %{$asmids}) {
     $pm->start and next;
-    download_asmid(
+    my %params = (
       asmid => $asmid,
-      filetypes => @filetypes,
       ftp_path => $asmids->{$asmid}->{ftp_path},
-      local_path => $asmids->{$asmid}->{local_path} . "/NCBI");
+      local_path => $asmids->{$asmid}->{local_path} . "/NCBI",
+      filetypes => [@filetypes]);
+    download_asmid(%params);
     $pm->finish;
   }
   $pm->wait_all_children;
@@ -182,9 +176,10 @@ sub download_asmids {
 
 sub get_new_asmids {
   # Given hash all input rows from assembly_summary and
-  # hash of previously seen asmids
+  # hash of input or previously seen asmids
   # Returns subset of input rows that are missing
-  my ($input, $known) = @_;
+  my $input = shift;
+  my $known = get_known(keys %$input);
   my %ret;
   if ($known) {
     for my $asmid (keys %$input) {

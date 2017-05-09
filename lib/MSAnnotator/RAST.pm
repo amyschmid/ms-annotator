@@ -8,11 +8,12 @@ use RASTserver;
 
 # Load custom modules
 use MSAnnotator::Base;
+use MSAnnotator::ModelSEED qw(ms_check_rast);
 use MSAnnotator::KnownAssemblies qw(update_known get_known);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(rast_submit rast_check_jobs rast_get_results);
+our @EXPORT_OK = qw(rast_update_status);
 
 # Constants
 use constant genbank_suffix => "_genomic.gbff";
@@ -20,6 +21,56 @@ use constant genbank_suffix => "_genomic.gbff";
 # Load credentials
 my ($user, $password) = @{LoadFile("credentials.yaml")}{qw(user password)};
 my $rast_client = RASTserver->new($user, $password);
+
+sub rast_update_status {
+  # Takes list of asmids, for each asmid with a rast jobid
+  # Checks status with rast / ms servers to ensure the job is usable
+  # Returns hash keyed by asmids
+  # Updates known_assembies file
+  # Should be the only funciton setting rast_status aside from initial submit
+  my @input_asmids = @_;
+  my $asmids = get_known(@input_asmids);
+  my %ret;
+
+  # Get asmids with a valid rast_jobid
+  # Ignore 'complete' and 'failed'
+  my @checkids;
+  for my $asmid (keys %$asmids) {
+    my %asm = %{$asmids->{$asmid}};
+    if ($asm{rast_jobid} && $asm{rast_status} eq 'in-progress') {
+      push(@checkids, $asmid);
+    }
+  }
+
+  # Early return if there is nothing to do
+  if (!@checkids) {
+    return \%ret;
+  }
+
+  # Lookup table
+  my %jobids = map { $asmids->{$_}->{rast_jobid} => $_ } @checkids;
+
+  # Get RAST status from rast
+  my $rast_status = $rast_client->status_of_RAST_job({-job => [keys %jobids]});
+
+  # Loop through status and assign values to ret
+  for my $jobid (keys %$rast_status) {
+    my $asmid = $jobids{$jobid};
+    my $status = $rast_status->{$jobid}->{status};
+
+    if ($status eq "complete") {
+      $ret{$asmid} = {rast_status => "complete"};
+    } elsif ($status eq "running" || $status eq "not_started") {
+      $ret{$asmid} = {rast_status => "in-progress"};
+    } else {
+      $ret{$asmid} = {rast_status => "failed"};
+    }
+  }
+
+  # Update known
+  update_known(\%ret);
+  return \%ret;
+}
 
 #sub prepare_genbankfile {
 #  # Extracts genbank file from gzip archive

@@ -11,7 +11,7 @@ use MSAnnotator::KnownAssemblies qw(update_known get_known);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(ms_modelrecon);
+our @EXPORT_OK = qw(ms_modelrecon ms_check_rast);
 
 # Globals
 my $modelseed_url = "http://p3c.theseed.org/dev1/services/ProbModelSEED";
@@ -192,8 +192,6 @@ sub ms_modelrecon {
     $modelseed_url,
     Authorization => $token,
     Content => encode_json($request));
-
-  say Dumper $res;
 
   my ($ret, $error);
   if ($res->is_success) {

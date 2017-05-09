@@ -21,11 +21,14 @@ our @EXPORT_OK = qw(update_known add_known get_known);
 use constant COLUMN_HEADER => (
   "asmid",
   "rast_jobid",
+  "rast_status",
   "rast_taxid",
   "rast_result",
   "modelseed_id",
+  "modelseed_status",
   "modelseed_name",
   "modelseed_result",
+  "organism_name",
   "taxid",
   "species_taxid",
   "version_status",
@@ -45,6 +48,7 @@ my ($known_table, $known_path) = fileparse($known_filename);
 # Set dbh options
 my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
   f_dir => $known_path,
+  csv_eol => "\n",
   csv_sep_char => ',',
   csv_quote_char => undef,
   csv_escape_char => undef});
@@ -128,16 +132,18 @@ sub update_known {
   # Given a hashref of keyed by asmid containing valid column types
   # updates the row associated with the supplied asmid
   # Will exit with an error if no asmids are found
-  my $asmids = $_;
+  my $asmids = shift;
 
   # Check known assemblies
+  my @missing;
   my $known = get_known(keys %$asmids);
-  my @missing = map { $_ if !exists($known->{$_}) } keys %$known;
-  my $err = "Error: Found missing entry for: ". join("\n  ", @missing);
-  croak $err if (scalar(@missing) > 0);
+  for my $asmid (keys %$asmids) {
+    push @missing, $asmid if !exists $known->{$asmid};
+  }
+  croak "Error: Found missing entry for: ". join("\n  ", @missing) if @missing;
 
   # Update values
-  do_update_known($_) for each %$known;
+  do_update_known($_) for each %$asmids;
 }
 
 
