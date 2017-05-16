@@ -8,7 +8,6 @@ use RASTserver;
 
 # Load custom modules
 use MSAnnotator::Base;
-use MSAnnotator::ModelSEED qw(ms_check_rast);
 use MSAnnotator::KnownAssemblies qw(update_known get_known);
 
 # Export functions

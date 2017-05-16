@@ -11,7 +11,7 @@ use MSAnnotator::KnownAssemblies qw(update_known get_known);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(ms_modelrecon ms_check_rast);
+our @EXPORT_OK = qw(ms_update_status);
 
 # Globals
 my $modelseed_url = "http://p3c.theseed.org/dev1/services/ProbModelSEED";
@@ -101,7 +101,7 @@ sub ms_check_rast {
   # Example return value:
   #   contig_count:  int or null
   #   creation_time: time
-  #   genome_id:     rast_jobid
+  #   genome_id:     rast_taxid
   #   genome_name:   rast_name
   #   genome_size:   int or null
   #   id:            rast_jobid
@@ -235,5 +235,56 @@ sub submit_modelrecon {
 #      my @urls = ms_downloadlinks($jobnames);
 #      for my $url in (@urls) {
 #
+
+sub ms_update_status {
+  # Given a list of keys, loads known_asmids
+  # If rast is complete and no ms status:
+  #    checks that rast_jobid can befound via ms_checkrast
+  #    Will fail without a ms_jobid if no genome is found
+  # If ms_status is in-progress
+  #    checks if there job has completed or failed
+  # Also will update rast_taxid for any valid completed rast_jobids
+  my @input_asmids = @_;
+  my $known = get_known(@input_asmids);
+
+  # Get current status from server
+  # msrast keys are rast_jobids
+  my $msjobs = ms_check_jobs;
+  my $msrast = ms_check_rast;
+
+  # Iterate through asmids and
+  # Check if modelseed id is available
+  #
+  my %ret;
+  for my $asmid (keys %$known) {
+    my %asm = %{$known->{$asmid}};
+    my $rjid = $asm{rast_jobid};
+    my $msid = $asm{modelseed_id};
+    if (!$msid) {
+      next if $asm{rast_status} ne 'complete';
+      # Have completed rast without a modelseed_id
+      if (!$asm{rast_taxid} and exists $msrast->{$rjid}) {
+        my $msrjob = $msrast->{$rjid};
+        if ($msrjob->{genome_size} ne 'null') {
+          $ret{$asmid}{rast_taxid} = $msrjob->{genome_id};
+        } else {
+          $ret{$asmid}{modelseed_status} = 'failed';
+        }
+      }
+    } else {
+      next if $asm{modelseed_status} ne 'in-progress';
+      # Have an in-progress modelseed_jobid
+      if ($msjobs->{$msid}->{status} == 'completed') {
+        $ret{$asmid}{modelseed_status} = "complete";
+      } elsif ($msjobs->{$msid}->{status} == 'failed') {
+        $ret{$asmid}{modelseed_status} = 'failed';
+      }
+    }
+  }
+
+  # Update known
+  update_known(\%ret);
+  return \%ret;
+}
 
 1;

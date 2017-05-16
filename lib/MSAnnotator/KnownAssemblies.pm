@@ -79,17 +79,33 @@ sub do_insert_known {
   my ($vals) = @_;
   chmod 0660, $known_filename;
   $insert_sth->execute(@{$vals}{@column_header});
-  $insert_sth->finish;
   chmod 0440, $known_filename;
 }
 
 sub do_update_known {
-  # Update known given an asmid, ensures asmid column is updated
+  # Update known given an asmid and hash ref
+  # Constructs a prepare statement and executes update
   my ($asmid, $values) = @_;
   delete $values->{asmid} if exists $values->{asmid};
+
+  # Prepare values to be updated
+  my (@update_cols, @update_vals);
+  for my $col (@column_header) {
+    if (exists $values->{$col}) {
+      push @update_cols, $col;
+      push @update_vals, $values->{$col};
+    }
+  }
+
+  # Prepare statement
+  my $statement = "UPDATE $known_table " .
+    "SET " . join(" = ?, ", @update_cols) . " = ? " .
+    "WHERE asmid = ?";
+
+  # Do the update
+  $update_sth = $dbh->prepare_cached($statement);
   chmod 0660, $known_filename;
-  $update_sth->execute(@{$values}{@column_header}, $asmid);
-  $update_sth->finish;
+  $update_sth->execute(@update_vals, $asmid);
   chmod 0440, $known_filename;
 }
 
@@ -143,7 +159,9 @@ sub update_known {
   croak "Error: Found missing entry for: ". join("\n  ", @missing) if @missing;
 
   # Update values
-  do_update_known($_) for each %$asmids;
+  while (my($asm, $vals) = each %$asmids) {
+    do_update_known($asm, $vals)
+  }
 }
 
 
