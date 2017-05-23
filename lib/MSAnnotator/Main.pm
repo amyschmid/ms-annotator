@@ -5,7 +5,7 @@ use MSAnnotator::Base;
 use MSAnnotator::Config;
 use MSAnnotator::NCBI qw(get_input_asmids get_new_asmids  add_asmids);
 use MSAnnotator::KnownAssemblies qw(update_known add_known get_known);
-use MSAnnotator::RAST qw(rast_update_status rast_submit);
+use MSAnnotator::RAST qw(rast_update_status rast_get_results rast_submit);
 use MSAnnotator::ModelSEED qw(ms_update_status);
 
 # Export functions
@@ -30,7 +30,7 @@ sub main {
   ms_update_status(@asmids);
 
   # Download complete RAST / MS analyses
-  # rast_download(...)
+  rast_get_results(@asmids)
   # ms_download(...)
 
   # Make submisions
