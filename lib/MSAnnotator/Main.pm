@@ -27,15 +27,15 @@ sub main {
 
   # Get current RAST / MS  status and update assembly_records
   rast_update_status(@asmids);
-  #ms_update_status(@asmids);
+  #modelseed_update_status(@asmids);
 
   # Download complete RAST / MS analyses
   rast_get_results(@asmids);
-  # ms_download(...)
+  # modelseed_download(...)
 
   # Make submisions
   rast_submit(@asmids);
-  #%ms_submissions = ms_submit(..);
+  modelseed_submit(@asmids);
 
   ### Print status
   ##print_status(

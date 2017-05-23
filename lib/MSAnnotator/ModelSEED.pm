@@ -11,7 +11,7 @@ use MSAnnotator::KnownAssemblies qw(update_records get_records);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(ms_update_status);
+our @EXPORT_OK = qw(modelseed_update_status);
 
 # Globals
 my $modelseed_url = "http://p3c.theseed.org/dev1/services/ProbModelSEED";
@@ -49,7 +49,7 @@ sub authenticate {
   return ($user, $token);
 }
 
-sub ms_check_jobs {
+sub modelseed_check_jobs {
   # Returns a hash of keyed by modelseed_id:
   #   app: RunProbModelSEEDJob
   #   status: completed or failed
@@ -99,7 +99,7 @@ sub ms_check_jobs {
   return $ret;
 }
 
-sub ms_check_rast {
+sub modelseed_check_rast {
   # Returns hash of rast analyses as seen by MS keyed by rast_jobid
   # Example return value:
   #   contig_count:  int or null
@@ -147,7 +147,7 @@ sub ms_check_rast {
   return \%ret_hash;
 }
 
-sub ms_downloadlinks {
+sub modelseed_downloadlinks {
   # Given ModelSEED analysis name
   # Return value is array of files ready to download
   my $msname = shift;
@@ -181,7 +181,7 @@ sub ms_downloadlinks {
   return $ret;
 }
 
-sub ms_modelrecon {
+sub modelseed_modelrecon {
   # Given a rast_taxid instructs modelseed to reconstruct metabolic model
   # Returns modelseed_id
   my $rast_taxid = shift;
@@ -218,22 +218,22 @@ sub ms_modelrecon {
   return $ret
 }
 
-#sub submit_modelrecon {
-#  # Given rast_jobid
-#  # Submits model reconstruction and returns modelseed_id
-#  my $rast_taxids = shift;
-#  for my $rast_taxid (@{$rast_taxids}) {
-#    my $modelseed_id = ms_modelrecon($rast_taxid);
-#    update_records($rast_taxid, {modelseed_id => $modelseed_id});
-#  }
-#}
+sub submit_modelrecon {
+  # Given rast_jobid
+  # Submits model reconstruction and returns modelseed_id
+  my $rast_taxids = shift;
+  for my $rast_taxid (@{$rast_taxids}) {
+    my $modelseed_id = modelseed_modelrecon($rast_taxid);
+    update_records($rast_taxid, {modelseed_id => $modelseed_id});
+  }
+}
 
-#sub ms_get_results {
+#sub modelseed_get_results {
 #  # Given array of modelseed_ids and checks status of job
 #  # If the job is complete, gets model name, and downloads results
 #  # Otherwise sets modelseed_result to "failed"
 #  my @modelseed_ids = @_;
-#  my $jobs = ms_checkjobs();
+#  my $jobs = modelseed_checkjobs();
 #
 #  my $error;
 #  for my $msid (@modelseed_ids) {
@@ -241,16 +241,16 @@ sub ms_modelrecon {
 #    my %job = %{$jobs->{msid}};
 #    if ($job{'status'} eq 'complete') {
 #      my $jobname = $job{parameters}{output_file};
-#      my @urls = ms_downloadlinks($jobnames);
+#      my @urls = modelseed_downloadlinks($jobnames);
 #      for my $url in (@urls) {
 #
 
-sub ms_update_status {
+sub modelseed_update_status {
   # Given a list of keys, loads assembly_records
   # If rast is complete and no ms status:
-  #    checks that rast_jobid can befound via ms_checkrast
-  #    Will fail without a ms_jobid if no genome is found
-  # If ms_status is in-progress
+  #    checks that rast_jobid can befound via modelseed_checkrast
+  #    Will fail without a modelseed_jobid if no genome is found
+  # If modelseed_status is in-progress
   #    checks if there job has completed or failed
   # Also will update rast_taxid for any valid completed rast_jobids
   my @input_asmids = @_;
@@ -258,8 +258,8 @@ sub ms_update_status {
 
   # Get current status from server
   # msrast keys are rast_jobids
-  my $msjobs = ms_check_jobs;
-  my $msrast = ms_check_rast;
+  my $msjobs = modelseed_check_jobs;
+  my $msrast = modelseed_check_rast;
 
   # Iterate through asmids and
   # Check if modelseed id is available
