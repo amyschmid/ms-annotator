@@ -152,11 +152,13 @@ sub update_known {
 
   # Check known assemblies
   my @missing;
+
   my $known = get_known(keys %$asmids);
   for my $asmid (keys %$asmids) {
     push @missing, $asmid if !exists $known->{$asmid};
   }
-  croak "Error: Found missing entry for: ". join("\n  ", @missing) if @missing;
+  croak "Error: Found missing entry for:\n   " .
+    join("\n  ", @missing) . "\n" if @missing;
 
   # Update values
   while (my($asm, $vals) = each %$asmids) {

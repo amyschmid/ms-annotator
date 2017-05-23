@@ -12,7 +12,7 @@ use MSAnnotator::KnownAssemblies qw(update_known get_known);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(rast_update_status);
+our @EXPORT_OK = qw(rast_update_status rast_submit);
 
 # Constants
 use constant genbank_suffix => "_genomic.gbff";
@@ -52,10 +52,10 @@ sub rast_update_status {
   # Get RAST status from rast
   my $rast_status = $rast_client->status_of_RAST_job({-job => [keys %jobids]});
 
-  # Loop through status and assign values to ret
-  for my $jobid (keys %$rast_status) {
+  # Loop through jobids and assign values to ret
+  for my $jobid (keys %jobids) {
     my $asmid = $jobids{$jobid};
-    my $status = $rast_status->{$jobid}->{status};
+    my $status = $rast_status->{$jobid}->{status} || "failed";
 
     if ($status eq "complete") {
       $ret{$asmid} = {rast_status => "complete"};
@@ -71,87 +71,89 @@ sub rast_update_status {
   return \%ret;
 }
 
-#sub prepare_genbankfile {
-#  # Extracts genbank file from gzip archive
-#  my ($asmids, $asmids) = @_;
-#  my $pm = new Parallel::ForkManager(10);
-#  for my $asmid (@{$asmids}) {
-#    my $gzfile = $asmids->{$asmid}->{local_path} .
-#      "/NCBI/$asmid" . genbank_suffix . ".gz";
-#    my $gbfile = $asmids->{$asmid}->{local_path} .
-#      "/$asmid" . genbank_suffix;
-#
-#    # Extract gz file
-#    if (! -e $gbfile) {
-#      $pm->start and next;
-#      gunzip $gzfile => $gbfile or croak "Error - GunzipError: $GunzipError";
-#      chmod 0440, $gbfile;
-#      $pm->finish;
-#    }
-#  }
-#  $pm->wait_all_children;
-#}
+sub prepare_genbankfile {
+  # Extracts genbank file from gzip archive
+  my ($asmids, $ids) = @_;
+  my $pm = new Parallel::ForkManager(10);
+  for my $id (@$ids) {
+    my $gzfile = $asmids->{$id}->{local_path} .
+      "/NCBI/$id" . genbank_suffix . ".gz";
+    my $gbfile = $asmids->{$id}->{local_path} .
+      "/$id" . genbank_suffix;
 
-#sub rast_submit {
-#  # TODO Fix this
-#  # Options from RASTserver:
-#  #
-#  # The equivalent of the "Keep Original Genecalls" flag is '--reannotate_only'.
-#  # The currently-supported arguments are:
-#  #   --help             => {Print 'help' information}
-#  #   --user             => RAST username,
-#  #   --passwd           => RAST password,
-#  #   --fasta            => filename of FASTA-format file for upload
-#  #   --genbank          => filename of GenBank-format file for upload
-#  #   --bioname          => quoted name of genome (i.e., "Genus species strain")
-#  #   --domain           => Domain of genome (Bacteria|Archaea|Virus)
-#  #   --taxon_ID         => NCBI Taxonomy-ID (def: 6666666)
-#  #   --genetic_code     => NCBI genetic-code number (def: 11)
-#  #   --gene_caller      => rast or glimmer3
-#  #   --reannotate_only  => Keep uploaded GenBank genecalls; only assign functions, etc.
-#  #   --determine_family => Use slow BLAST instead of fast Kmers to determine family memberships
-#  #   --kmerDataset      => Which set of FIGfam Kmers to use (def: 'Release70')
-#  #   --fix_frameshifts  => Attempt to reconstruct frameshifts errors
-#  #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
-#  my ($asmids, $asmids) = @_;
-#  my %opts = (
-#    -filetype => 'genbank',
-#    -domain => 'archaea',
-#    -geneCaller => 'rast',
-#    -reannotate_only => 1,
-#    -genetic_code => 11,
-#    -keepGeneCalls => 1);
-#
-#  # Ensure genbank files are extracted
-#  # TODO fix
-#  prepare_genbankfile($asmids, $amids);
-#
-#  # Iterate through ids, submit, and add rast_jobid to known
-#  for my $asmid (@{$asmids}) {
-#    my $asm = $assemblies->{$asmid};
-#    my $gbfile = "$asm->{local_path}/$asmid" . genbank_suffix;
-#    croak "Error - Could not find: $gbfile" if ! -e $gbfile;
-#
-#    # Need to pass file, taxid, and organism name
-#    my $params = {
-#      -file => $gbfile,
-#      -taxonomyID => $asm->{taxid},
-#      -organismName => $asm->{organism_name},
-#      %opts};
-#    my $ret = $rast_client->submit_RAST_job($params);
-#
-#    # TODO RASTserver.pm will die uppon catching an error
-#    say $ret->{status};
-#    if ($ret->{status} eq 'ok') {
-#      update_known($ret->{job_id}, $asm);
-#    } else {
-#      my $msg = $ret->{error_message};
-#      my $err = "Error - Durring RAST submission for $asmid".
-#        $msg ? "\n  RAST error message: $msg" : "\n";
-#      croak $err;
-#    }
-#  }
-#}
+    # Extract gz file
+    if (! -e $gbfile) {
+      $pm->start and next;
+      gunzip $gzfile => $gbfile or croak "Error - GunzipError: $GunzipError";
+      chmod 0440, $gbfile;
+      $pm->finish;
+    }
+  }
+  $pm->wait_all_children;
+}
+
+sub rast_submit {
+  # Options from RASTserver:
+  # The equivalent of the "Keep Original Genecalls" flag is '--reannotate_only'.
+  # The currently-supported arguments are:
+  #   --fasta            => filename of FASTA-format file for upload
+  #   --genbank          => filename of GenBank-format file for upload
+  #   --bioname          => quoted name of genome (i.e., "Genus species strain")
+  #   --domain           => Domain of genome (Bacteria|Archaea|Virus)
+  #   --taxon_ID         => NCBI Taxonomy-ID (def: 6666666)
+  #   --genetic_code     => NCBI genetic-code number (def: 11)
+  #   --gene_caller      => rast or glimmer3
+  #   --reannotate_only  => Keep uploaded GenBank genecalls; only assign functions, etc.
+  #   --determine_family => Use slow BLAST instead of fast Kmers to determine family memberships
+  #   --kmerDataset      => Which set of FIGfam Kmers to use (def: 'Release70')
+  #   --fix_frameshifts  => Attempt to reconstruct frameshifts errors
+  #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
+  # NOTE RASTserver.pm will die uppon catching an error
+  my @input_asmids = @_;
+  my %opts = (
+    -filetype => 'genbank',
+    -domain => 'archaea',
+    -geneCaller => 'rast',
+    -keepGeneCalls => 1,
+    -geneticCode => 11);
+
+  # Get ids that need a rast submission
+  my @ids;
+  my $asmids = get_known(@input_asmids);
+  for my $id (keys %$asmids) {
+    push(@ids, $id) if !$asmids->{$id}->{rast_jobid};
+  }
+
+  # Ensure all genbank files are available
+  prepare_genbankfile($asmids, \@ids);
+
+  # Iterate through ids, submit, and add rast_jobid to known
+  for my $id (@ids) {
+    my $asm = $asmids->{$id};
+    my $gbfile = "$asm->{local_path}/$id" . genbank_suffix;
+    croak "Error - Could not find: $gbfile" if ! -e $gbfile;
+
+    # Need to pass file, taxid, and organism name
+    my $params = {
+      -file => $gbfile,
+      -taxonomyID => $asm->{taxid},
+      -organismName => $asm->{organism_name},
+      %opts};
+    my $res = $rast_client->submit_RAST_job($params);
+
+    # Check status and update known records
+    if ($res->{status} eq 'ok') {
+      my %rast_update = (
+        $id => {
+          rast_jobid => $res->{job_id},
+          rast_status => 'in-progress',
+          rast_taxid => ''});
+      update_known(\%rast_update);
+    } else {
+      croak "Error - Durring RAST submission for $id";
+    }
+  }
+}
 
 #sub rast_get_complete {
 #  # Takes array of jobids and returns jobids that are complete
