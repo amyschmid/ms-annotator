@@ -50,7 +50,7 @@ sub authenticate {
 }
 
 sub modelseed_check_jobs {
-  # Returns a hash of keyed by modelseed_id:
+  # Returns a hash of keyed by modelseed_jobid:
   #   app: RunProbModelSEEDJob
   #   status: completed or failed
   #   submit_time: 2017-03-07T15:03:15.496-06:00
@@ -183,7 +183,7 @@ sub modelseed_downloadlinks {
 
 sub modelseed_modelrecon {
   # Given a rast_taxid instructs modelseed to reconstruct metabolic model
-  # Returns modelseed_id
+  # Returns modelseed_jobid
   my $rast_taxid = shift;
   my $request = {
     version => '1.1',
@@ -218,25 +218,26 @@ sub modelseed_modelrecon {
   return $ret
 }
 
-sub submit_modelrecon {
-  # Given rast_jobid
-  # Submits model reconstruction and returns modelseed_id
+sub modelseed_submit {
+  # Given list of assembly ids
+  # Checks records for rast_taxids that need model reconstruction run
+  # Updates modelseed_jobid, modelseed_status,
   my $rast_taxids = shift;
   for my $rast_taxid (@{$rast_taxids}) {
-    my $modelseed_id = modelseed_modelrecon($rast_taxid);
-    update_records($rast_taxid, {modelseed_id => $modelseed_id});
+    my $modelseed_jobid = modelseed_modelrecon($rast_taxid);
+    update_records($rast_taxid, {modelseed_jobid => $modelseed_jobid});
   }
 }
 
 #sub modelseed_get_results {
-#  # Given array of modelseed_ids and checks status of job
+#  # Given array of modelseed_jobids and checks status of job
 #  # If the job is complete, gets model name, and downloads results
 #  # Otherwise sets modelseed_result to "failed"
-#  my @modelseed_ids = @_;
+#  my @modelseed_jobids = @_;
 #  my $jobs = modelseed_checkjobs();
 #
 #  my $error;
-#  for my $msid (@modelseed_ids) {
+#  for my $msid (@modelseed_jobids) {
 #    croak "Error: ModelSEED cannot find jobid $msid" if !exists $jobs->{$msid};
 #    my %job = %{$jobs->{msid}};
 #    if ($job{'status'} eq 'complete') {
@@ -267,10 +268,10 @@ sub modelseed_update_status {
   for my $asmid (keys %$records) {
     my %asm = %{$records->{$asmid}};
     my $rjid = $asm{rast_jobid};
-    my $msid = $asm{modelseed_id};
+    my $msid = $asm{modelseed_jobid};
     if (!$msid) {
       next if $asm{rast_status} ne 'complete';
-      # Have completed rast without a modelseed_id
+      # Have completed rast without a modelseed_jobid
       if (!$asm{rast_taxid} and exists $msrast->{$rjid}) {
         my $msrjob = $msrast->{$rjid};
         if ($msrjob->{genome_size} ne 'null') {

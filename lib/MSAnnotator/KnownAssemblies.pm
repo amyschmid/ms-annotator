@@ -14,7 +14,7 @@ our @EXPORT_OK = qw(update_records add_records get_records);
 
 # Order does not matter
 # Any all columns can be added or removed except:
-#   asmid, rast_jobid, rast_taxid, rast_result, modelseed_id, modelseed_result
+#   asmid, rast_jobid, rast_taxid, rast_result, modelseed_jobid, modelseed_result
 #
 # Note that asmid is used as a primary key
 # Values for all other keys are added via the assembly hash
@@ -24,7 +24,7 @@ use constant COLUMN_HEADER => (
   "rast_status",
   "rast_taxid",
   "rast_result",
-  "modelseed_id",
+  "modelseed_jobid",
   "modelseed_status",
   "modelseed_name",
   "modelseed_result",
