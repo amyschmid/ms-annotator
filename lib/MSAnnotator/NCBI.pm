@@ -8,7 +8,7 @@ use Clone 'clone';
 # Load custom modukes
 use MSAnnotator::Base;
 use MSAnnotator::Util qw(download_url download_check);
-use MSAnnotator::KnownAssemblies qw(update_known add_known get_known);
+use MSAnnotator::KnownAssemblies qw(update_records add_records get_records);
 
 # Export functions
 require Exporter;
@@ -37,7 +37,8 @@ use constant ASSEMBLY_HEADER => (
   "gbrs_paired_asm",
   "paired_asm_comp",
   "ftp_path",
-  "excluded_from_refseq");
+  "excluded_from_refseq",
+  "relation_to_type_material");
 
 sub get_assembly_summary {
   # Check if summary file exits
@@ -96,8 +97,7 @@ sub get_input_asmids {
     $config->{ncbi_assemblies_file},
     $config->{ncbi_assemblies_url});
 
-  my $assemblies = load_ncbi_assemblies(
-    $config->{ncbi_assemblies_file});
+  my $assemblies = load_ncbi_assemblies($config->{ncbi_assemblies_file});
 
   # Identify all species taxids, using keys of hash to keep unique values
   my %taxid_species;
@@ -148,7 +148,7 @@ sub download_asmid {
 
 sub add_asmids {
   # Takes config file and list of asmids
-  # Downloads filetypes to 'local_path' and updates known_assemblies
+  # Downloads filetypes to 'local_path' and updates assembly_records
   # Available filetypes can be found here:
   #   ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt
   my ($config, $asmids) = @_;
@@ -170,8 +170,8 @@ sub add_asmids {
   }
   $pm->wait_all_children;
 
-  # All asmids downloaded update known_assemblies
-  add_known($asmids);
+  # All asmids downloaded update assembly_records
+  add_records($asmids);
 }
 
 sub get_new_asmids {
@@ -179,11 +179,11 @@ sub get_new_asmids {
   # hash of input or previously seen asmids
   # Returns subset of input rows that are missing
   my $input = shift;
-  my $known = get_known(keys %$input);
+  my $records = get_records(keys %$input);
   my %ret;
-  if ($known) {
+  if ($records) {
     for my $asmid (keys %$input) {
-      $ret{$asmid} = clone($input->{$asmid}) if !exists $known->{$asmid};
+      $ret{$asmid} = clone($input->{$asmid}) if !exists $records->{$asmid};
     }
   } else {
     %ret = clone($input);

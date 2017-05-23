@@ -8,7 +8,7 @@ use RASTserver;
 
 # Load custom modules
 use MSAnnotator::Base;
-use MSAnnotator::KnownAssemblies qw(update_known get_known);
+use MSAnnotator::KnownAssemblies qw(update_records get_records);
 
 # Export functions
 our @ISA = 'Exporter';
@@ -26,17 +26,17 @@ sub rast_update_status {
   # Takes list of asmids, for each asmid with a rast jobid
   # Checks status with rast / ms servers to ensure the job is usable
   # Returns hash keyed by asmids
-  # Updates known_assembies file
+  # Updates assembly_records
   # Should be the only funciton setting rast_status aside from initial submit
   my @input_asmids = @_;
-  my $asmids = get_known(@input_asmids);
+  my $records = get_records(@input_asmids);
   my %ret;
 
   # Get asmids with a valid rast_jobid
   # Ignore 'complete' and 'failed'
   my @checkids;
-  for my $asmid (keys %$asmids) {
-    my %asm = %{$asmids->{$asmid}};
+  for my $asmid (keys %$records) {
+    my %asm = %{$records->{$asmid}};
     if ($asm{rast_jobid} && $asm{rast_status} eq 'in-progress') {
       push(@checkids, $asmid);
     }
@@ -48,7 +48,7 @@ sub rast_update_status {
   }
 
   # Lookup table
-  my %jobids = map { $asmids->{$_}->{rast_jobid} => $_ } @checkids;
+  my %jobids = map { $records->{$_}->{rast_jobid} => $_ } @checkids;
 
   # Get RAST status from rast
   my $rast_status = $rast_client->status_of_RAST_job({-job => [keys %jobids]});
@@ -67,8 +67,8 @@ sub rast_update_status {
     }
   }
 
-  # Update known
-  update_known(\%ret);
+  # Update records
+  update_records(\%ret);
   return \%ret;
 }
 
@@ -109,7 +109,10 @@ sub rast_submit {
   #   --kmerDataset      => Which set of FIGfam Kmers to use (def: 'Release70')
   #   --fix_frameshifts  => Attempt to reconstruct frameshifts errors
   #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
-  my @input_asmids = @_;
+  #  NOTE:
+  #   This does not check to ensure that genes are present in gbff file
+
+  my @asmids = @_;
   my %opts = (
     -filetype => 'genbank',
     -domain => 'archaea',
@@ -118,19 +121,19 @@ sub rast_submit {
     -geneticCode => 11);
 
   # Get ids that need a rast submission
-  my @ids;
-  my $asmids = get_known(@input_asmids);
-  for my $id (keys %$asmids) {
-    push(@ids, $id) if !$asmids->{$id}->{rast_jobid};
+  my @submit;
+  my $records = get_records(@asmids);
+  for my $asmid (keys %$records) {
+    push(@submit, $asmid) if !$records->{$asmid}->{rast_jobid};
   }
 
   # Ensure all genbank files are available
-  prepare_genbankfile($asmids, \@ids);
+  prepare_genbankfile($records, \@submit);
 
-  # Iterate through ids, submit, and add rast_jobid to known
-  for my $id (@ids) {
-    my $asm = $asmids->{$id};
-    my $gbfile = "$asm->{local_path}/$id" . genbank_suffix;
+  # Iterate through ids, submit, and add rast_jobid to records
+  for my $asmid (@submit) {
+    my $asm = $records->{$asmid};
+    my $gbfile = "$asm->{local_path}/$asmid" . genbank_suffix;
     croak "Error - Could not find: $gbfile" if ! -e $gbfile;
 
     # Need to pass file, taxid, and organism name
@@ -141,28 +144,28 @@ sub rast_submit {
       %opts};
     my $res = $rast_client->submit_RAST_job($params);
 
-    # Check status and update known records
+    # Check status and update records
     if ($res->{status} eq 'ok') {
       my %rast_update = (
-        $id => {
+        $asmid => {
           rast_jobid => $res->{job_id},
           rast_status => 'in-progress',
           rast_taxid => ''});
-      update_known(\%rast_update);
+      update_records(\%rast_update);
     } else {
-      croak "Error - Durring RAST submission for $id";
+      croak "Error - Durring RAST submission for $asmid";
     }
   }
 }
 
 sub rast_get_results {
   # Takes array of jobids and returns jobids that are complete
-  # Fetches resulting gbff from RAST server and updates known
-  my @input_asmids = @_;
-  my $asmids = get_known(@input_asmids);
+  # Fetches resulting gbff from RAST server and updates records
+  my @asmids = @_;
+  my $records = get_records(@asmids);
   my (%ret, @error);
 
-  while ( my ($asmid, $asm) = each %$asmids ) {
+  while ( my ($asmid, $asm) = each %$records ) {
     next if $asm->{rast_status} ne 'complete' || $asm->{rast_result};
     my $jobid = $asm->{rast_jobid};
     my $local_path = $asm->{local_path};
@@ -190,8 +193,8 @@ sub rast_get_results {
     close $outfile;
     close $buffer;
 
-    # Update known
-    update_known({$asmid => {rast_result => $outfile}})
+    # Update records
+    update_records({$asmid => {rast_result => $outfile}})
   }
 }
 

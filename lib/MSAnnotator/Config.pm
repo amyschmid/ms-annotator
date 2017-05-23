@@ -21,7 +21,7 @@ sub load_config {
   my $assmblfn = (split('/', $config->{ncbi_assemblies_url}))[-1];
   $config->{taxid_file} = "$pwd/$config->{taxid_file}";
   $config->{data_dir} = "$pwd/$config->{data_dir}";
-  $config->{known_assemblies} = "$pwd/$config->{known_assemblies}";
+  $config->{record_filename} = "$pwd/$config->{record_filename}";
   $config->{ncbi_assemblies_file} = "$config->{data_dir}/$assmblfn";
 
   # Ensure data_dir exists

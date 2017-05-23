@@ -7,7 +7,7 @@ use JSON qw(encode_json decode_json);
 
 # Load custom modules
 use MSAnnotator::Base;
-use MSAnnotator::KnownAssemblies qw(update_known get_known);
+use MSAnnotator::KnownAssemblies qw(update_records get_records);
 
 # Export functions
 our @ISA = 'Exporter';
@@ -46,7 +46,6 @@ sub authenticate {
   if ($error) {
     croak "Error - ModelSEED authentication failed: $error\n";
   }
-
   return ($user, $token);
 }
 
@@ -69,18 +68,22 @@ sub ms_check_jobs {
   #       output_file: modelseed_name
   #       media: /chenry/public/modelsupport/media/Complete
   #       genome: rast_taxid
+
+  # Initialize request
   my $request = {
     version => '1.1',
     method => 'ProbModelSEED.CheckJobs',
     params => [{}]
   };
 
+  # Authenticate
   my $ua = LWP::UserAgent->new;
   my $res = $ua->post(
     $modelseed_url,
     Authorization => $token,
     Content => encode_json($request));
 
+  # Post and check for errors
   my ($ret, $error);
   if ($res->is_success) {
     eval { $ret = decode_json($res->content)->{result}->[0] };
@@ -109,18 +112,22 @@ sub ms_check_rast {
   #   owner:         user
   #   project:       usr_taxid
   #   type:          Genome
+
+  # Initialize request
   my $request = {
     version => '1.1',
     method => 'MSSeedSupportServer.list_rast_jobs',
     params => [{}]
   };
 
+  # Authenticate
   my $ua = LWP::UserAgent->new;
   my $res = $ua->post(
     $fba_url,
     Authorization => $token,
     Content => encode_json($request));
 
+  # Post request
   my ($ret, $error);
   if ($res->is_success) {
     eval { $ret = decode_json($res->content)->{result}->[0] };
@@ -187,12 +194,14 @@ sub ms_modelrecon {
         media => '/chenry/public/modelsupport/media/Complete'}]
   };
 
+  # Authenticate
   my $ua = LWP::UserAgent->new;
   my $res = $ua->post(
     $modelseed_url,
     Authorization => $token,
     Content => encode_json($request));
 
+  # Post request and check for errors
   my ($ret, $error);
   if ($res->is_success) {
     eval { $ret = decode_json($res->content)->{result}->[0] };
@@ -209,20 +218,20 @@ sub ms_modelrecon {
   return $ret
 }
 
-sub submit_modelrecon {
-  # Given rast_jobid
-  # Submits model reconstruction and returns modelseed_id
-  my $rast_taxids = shift;
-  for my $rast_taxid (@{$rast_taxids}) {
-    my $modelseed_id = ms_modelrecon($rast_taxid);
-    update_known($rast_taxid, {modelseed_id => $modelseed_id});
-  }
-}
+#sub submit_modelrecon {
+#  # Given rast_jobid
+#  # Submits model reconstruction and returns modelseed_id
+#  my $rast_taxids = shift;
+#  for my $rast_taxid (@{$rast_taxids}) {
+#    my $modelseed_id = ms_modelrecon($rast_taxid);
+#    update_records($rast_taxid, {modelseed_id => $modelseed_id});
+#  }
+#}
 
 #sub ms_get_results {
 #  # Given array of modelseed_ids and checks status of job
 #  # If the job is complete, gets model name, and downloads results
-#  # Otherwise denotes "failed" in modelseed_result field of known_asmids
+#  # Otherwise sets modelseed_result to "failed"
 #  my @modelseed_ids = @_;
 #  my $jobs = ms_checkjobs();
 #
@@ -237,7 +246,7 @@ sub submit_modelrecon {
 #
 
 sub ms_update_status {
-  # Given a list of keys, loads known_asmids
+  # Given a list of keys, loads assembly_records
   # If rast is complete and no ms status:
   #    checks that rast_jobid can befound via ms_checkrast
   #    Will fail without a ms_jobid if no genome is found
@@ -245,7 +254,7 @@ sub ms_update_status {
   #    checks if there job has completed or failed
   # Also will update rast_taxid for any valid completed rast_jobids
   my @input_asmids = @_;
-  my $known = get_known(@input_asmids);
+  my $records = get_records(@input_asmids);
 
   # Get current status from server
   # msrast keys are rast_jobids
@@ -254,10 +263,9 @@ sub ms_update_status {
 
   # Iterate through asmids and
   # Check if modelseed id is available
-  #
   my %ret;
-  for my $asmid (keys %$known) {
-    my %asm = %{$known->{$asmid}};
+  for my $asmid (keys %$records) {
+    my %asm = %{$records->{$asmid}};
     my $rjid = $asm{rast_jobid};
     my $msid = $asm{modelseed_id};
     if (!$msid) {
@@ -282,8 +290,8 @@ sub ms_update_status {
     }
   }
 
-  # Update known
-  update_known(\%ret);
+  # Update records
+  update_records(\%ret);
   return \%ret;
 }
 

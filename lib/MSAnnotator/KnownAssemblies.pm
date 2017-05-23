@@ -10,7 +10,7 @@ use MSAnnotator::Config;
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(update_known add_known get_known);
+our @EXPORT_OK = qw(update_records add_records get_records);
 
 # Order does not matter
 # Any all columns can be added or removed except:
@@ -42,48 +42,48 @@ my @column_header = (COLUMN_HEADER);
 
 # Get global dbh
 my $config = load_config();
-my $known_filename = $config->{known_assemblies};
-my ($known_table, $known_path) = fileparse($known_filename);
+my $records_filename = $config->{record_filename};
+my ($records_table, $records_path) = fileparse($records_filename);
 
 # Set dbh options
 my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
-  f_dir => $known_path,
+  f_dir => $records_path,
   csv_eol => "\n",
   csv_sep_char => ',',
   csv_quote_char => undef,
   csv_escape_char => undef});
 
 # Create file if it does not exist and ensure file is write protected
-if (! -e $known_filename) {
+if (! -e $records_filename) {
   my $colstr = join(" CHAR(0), ", @column_header) . " CHAR(0)";
-  $dbh->do("CREATE TABLE $known_table ($colstr)");
-  chmod 0440, $known_filename;
+  $dbh->do("CREATE TABLE $records_table ($colstr)");
+  chmod 0440, $records_filename;
 }
 
 # Insert statement
 my $insert_sth = $dbh->prepare(
-  "INSERT INTO $known_table (" . join(", ", @column_header) . ") " .
+  "INSERT INTO $records_table (" . join(", ", @column_header) . ") " .
   "VALUES (". "?, " x $#column_header . "?)");
 
 # Update whole row with given rast_jobid
 my $update_sth = $dbh->prepare(
-  "UPDATE $known_table " .
+  "UPDATE $records_table " .
   "SET " . join(" = ?, ", @column_header) . " = ? " .
   "WHERE asmid = ?");
 
 # Fetch via assembly
 my $query_asmids_sth= $dbh->prepare(
-  "SELECT * FROM $known_table WHERE asmid = ?");
+  "SELECT * FROM $records_table WHERE asmid = ?");
 
-sub do_insert_known {
+sub do_insert_records {
   my ($vals) = @_;
-  chmod 0660, $known_filename;
+  chmod 0660, $records_filename;
   $insert_sth->execute(@{$vals}{@column_header});
-  chmod 0440, $known_filename;
+  chmod 0440, $records_filename;
 }
 
-sub do_update_known {
-  # Update known given an asmid and hash ref
+sub do_update_records {
+  # Update records given an asmid and hash ref
   # Constructs a prepare statement and executes update
   my ($asmid, $values) = @_;
   delete $values->{asmid} if exists $values->{asmid};
@@ -98,18 +98,18 @@ sub do_update_known {
   }
 
   # Prepare statement
-  my $statement = "UPDATE $known_table " .
+  my $statement = "UPDATE $records_table " .
     "SET " . join(" = ?, ", @update_cols) . " = ? " .
     "WHERE asmid = ?";
 
   # Do the update
   $update_sth = $dbh->prepare_cached($statement);
-  chmod 0660, $known_filename;
+  chmod 0660, $records_filename;
   $update_sth->execute(@update_vals, $asmid);
-  chmod 0440, $known_filename;
+  chmod 0440, $records_filename;
 }
 
-sub get_known {
+sub get_records {
   # Given a list of asmids, returns hash of all rows of know_assemblies
   # Return hash is keyed by asmid
   my @asmids = @_;
@@ -123,7 +123,7 @@ sub get_known {
   return \%ret;
 }
 
-sub add_known {
+sub add_records {
   # Given a hashref keyed by asmid containing valid column types
   # Adds new row containing values from hash
   # Will exit with error if asmid already exists
@@ -134,37 +134,36 @@ sub add_known {
     $asmids->{$asmid}->{asmid} = $asmid if !exists $asmids->{$asmid}->{asmid};
   }
 
-  # Check known assemblies
-  my $known = get_known(keys %$asmids);
-  my @found = map { $_ if exists($known->{$_}) } keys %$known;
+  # Check records assemblies
+  my $records = get_records(keys %$asmids);
+  my @found = map { $_ if exists($records->{$_}) } keys %$records;
   my $err = "Error: Found already existing entry for: ". join("\n  ", @found);
   croak $err if (scalar(@found) > 0);
 
   # Add values
-  do_insert_known($_) for values(%$asmids);
+  do_insert_records($_) for values %$asmids;
 }
 
-sub update_known {
+sub update_records {
   # Given a hashref of keyed by asmid containing valid column types
   # updates the row associated with the supplied asmid
   # Will exit with an error if no asmids are found
   my $asmids = shift;
 
-  # Check known assemblies
+  # Check records assemblies
   my @missing;
 
-  my $known = get_known(keys %$asmids);
-  for my $asmid (keys %$asmids) {
-    push @missing, $asmid if !exists $known->{$asmid};
+  my $records = get_records(keys %$asmids);
+  for my $asmid (keys %$records) {
+    push @missing, $asmid if !exists $records->{$asmid};
   }
   croak "Error: Found missing entry for:\n   " .
     join("\n  ", @missing) . "\n" if @missing;
 
   # Update values
   while (my($asm, $vals) = each %$asmids) {
-    do_update_known($asm, $vals)
+    do_update_records($asm, $vals)
   }
 }
-
 
 1;
