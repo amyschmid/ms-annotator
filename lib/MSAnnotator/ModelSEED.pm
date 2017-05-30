@@ -1,5 +1,6 @@
 package MSAnnotator::ModelSEED;
 require Exporter;
+use File::Basename;
 use HTTP::Request::Common;
 use LWP::UserAgent;
 use YAML 'LoadFile';
@@ -7,11 +8,12 @@ use JSON qw(encode_json decode_json);
 
 # Load custom modules
 use MSAnnotator::Base;
+use MSAnnotator::Util qw(download_url);
 use MSAnnotator::KnownAssemblies qw(update_records get_records);
 
 # Export functions
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(modelseed_update_status);
+our @EXPORT_OK = qw(modelseed_update_status modelseed_submit modelseed_get_results);
 
 # Globals
 my $modelseed_url = "http://p3c.theseed.org/dev1/services/ProbModelSEED";
@@ -150,9 +152,8 @@ sub modelseed_check_rast {
 sub modelseed_downloadlinks {
   # Given ModelSEED analysis name
   # Return value is array of files ready to download
-  my $msname = shift;
-  my @filetypes = (".sbml", ".cpdtbl", ".rxntbl");
-  my @filenames = map { "/$user/modelseed/$msname/$msname" . $_ } @filetypes;
+  my ($ms_name, $filetypes) = @_;
+  my @filenames = map { "/$user/modelseed/$ms_name/$ms_name" . $_ } @$filetypes;
   my $request = {
     version => '1.1',
     method => 'Workspace.get_download_url',
@@ -184,13 +185,13 @@ sub modelseed_downloadlinks {
 sub modelseed_modelrecon {
   # Given a rast_taxid instructs modelseed to reconstruct metabolic model
   # Returns modelseed_jobid
-  my $rast_taxid = shift;
+  my ($rast_taxid, $ms_name) = @_;
   my $request = {
     version => '1.1',
     method => 'ProbModelSEED.ModelReconstruction',
     params => [{
         genome => "RAST:$rast_taxid",
-        output_file => "MS$rast_taxid",
+        output_file => "$ms_name",
         media => '/chenry/public/modelsupport/media/Complete'}]
   };
 
@@ -218,33 +219,63 @@ sub modelseed_modelrecon {
   return $ret
 }
 
+sub modelseed_get_results {
+  # Given list of assembly ids
+  # Gets modelseed_name, and downloads files
+  # Updates modelseed_result with smbl file
+  my @asmids = @_;
+  my $records = get_records(@asmids);
+  my @filetypes = (".sbml", ".cpdtbl", ".rxntbl");
+
+  while (my ($asmid, $asm) = each %$records) {
+    next if $asm->{modelseed_status} ne "complete" || $asm->{modelseed_result};
+    my $ms_name = $asm->{modelseed_name};
+    my $local_path = $asm->{local_path};
+    my $links = modelseed_downloadlinks($ms_name, \@filetypes);
+    my $ms_found = 0;
+    my $ms_result;
+
+    for my $link (@$links) {
+      next if $link eq "null" || !$link;
+      my $filename = $local_path . "/" . basename($link);
+      chmod(660, $filename) if -e $filename;
+      download_url($link, $filename);
+      $ms_result = $filename if !$ms_result;
+      $ms_result = $filename if $filename =~ /.smbl$/i;
+      $ms_found += 1;
+      chmod(440, $filename);
+    }
+
+    if ($ms_found == 0) {
+      croak "Error - Could not find any files to download for $ms_name\n";
+    }
+    update_records({$asmid => {modelseed_result => $ms_result}});
+  }
+}
+
 sub modelseed_submit {
   # Given list of assembly ids
   # Checks records for rast_taxids that need model reconstruction run
   # Updates modelseed_jobid, modelseed_status,
-  my $rast_taxids = shift;
-  for my $rast_taxid (@{$rast_taxids}) {
-    my $modelseed_jobid = modelseed_modelrecon($rast_taxid);
-    update_records($rast_taxid, {modelseed_jobid => $modelseed_jobid});
+  # NOTE:
+  #   modelseed_status could already be set to failed
+  #   via modelseed_update_status
+  my @asmids = @_;
+  my $records = get_records(@asmids);
+
+  while (my ($asmid, $asm) = each %$records) {
+    next if $asm->{rast_status} ne "complete" || $asm->{modelseed_jobid};
+    next if $asm->{modelseed_status} eq "failed" || ! $asm->{rast_taxid};
+    my $rast_id = $asm->{rast_taxid};
+    my $ms_name = "MS$rast_id";
+    my $modelseed_jobid = modelseed_modelrecon($rast_id, $ms_name);
+    update_records({
+      $asmid => {
+        modelseed_name => $ms_name,
+        modelseed_jobid => $modelseed_jobid,
+        modelseed_status => "in-progress"}});
   }
 }
-
-#sub modelseed_get_results {
-#  # Given array of modelseed_jobids and checks status of job
-#  # If the job is complete, gets model name, and downloads results
-#  # Otherwise sets modelseed_result to "failed"
-#  my @modelseed_jobids = @_;
-#  my $jobs = modelseed_checkjobs();
-#
-#  my $error;
-#  for my $msid (@modelseed_jobids) {
-#    croak "Error: ModelSEED cannot find jobid $msid" if !exists $jobs->{$msid};
-#    my %job = %{$jobs->{msid}};
-#    if ($job{'status'} eq 'complete') {
-#      my $jobname = $job{parameters}{output_file};
-#      my @urls = modelseed_downloadlinks($jobnames);
-#      for my $url in (@urls) {
-#
 
 sub modelseed_update_status {
   # Given a list of keys, loads assembly_records
@@ -283,9 +314,9 @@ sub modelseed_update_status {
     } else {
       next if $asm{modelseed_status} ne 'in-progress';
       # Have an in-progress modelseed_jobid
-      if ($msjobs->{$msid}->{status} == 'completed') {
+      if ($msjobs->{$msid}->{status} eq 'completed') {
         $ret{$asmid}{modelseed_status} = "complete";
-      } elsif ($msjobs->{$msid}->{status} == 'failed') {
+      } elsif ($msjobs->{$msid}->{status} eq 'failed') {
         $ret{$asmid}{modelseed_status} = 'failed';
       }
     }
