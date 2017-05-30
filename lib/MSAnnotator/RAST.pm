@@ -93,6 +93,17 @@ sub prepare_genbankfile {
   $pm->wait_all_children;
 }
 
+sub rast_get_inprogress {
+  my $asmids = shift;
+  my $records = get_records(@$asmids);
+  my $ret;
+  for my $asm (values %$records) {
+    $ret += 1 if $asm->{rast_status} eq "in-progress";
+  }
+  return $ret;
+}
+
+
 sub rast_submit {
   # Options from RASTserver:
   # The equivalent of the "Keep Original Genecalls" flag is '--reannotate_only'.
@@ -111,8 +122,10 @@ sub rast_submit {
   #   --rasttk           => Use RASTtk pipeline instead of "Classic RAST."
   #  NOTE:
   #   This does not check to ensure that genes are present in gbff file
+  my ($asmids, $maxjobs) = @_;
+  my $records = get_records(@$asmids);
 
-  my @asmids = @_;
+  # Rast options
   my %opts = (
     -filetype => 'genbank',
     -domain => 'archaea',
@@ -122,7 +135,6 @@ sub rast_submit {
 
   # Get ids that need a rast submission
   my @submit;
-  my $records = get_records(@asmids);
   for my $asmid (keys %$records) {
     push(@submit, $asmid) if !$records->{$asmid}->{rast_jobid};
   }
@@ -133,6 +145,9 @@ sub rast_submit {
   # Iterate through ids, submit, and add rast_jobid to records
   for my $asmid (@submit) {
     my $asm = $records->{$asmid};
+    my $rast_inprogress = rast_get_inprogress($asmids);
+    last if $rast_inprogress >= $maxjobs && $maxjobs != 0;
+
     my $gbfile = "$asm->{local_path}/$asmid" . genbank_suffix;
     croak "Error - Could not find: $gbfile" if ! -e $gbfile;
 

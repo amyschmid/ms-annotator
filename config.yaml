@@ -6,10 +6,14 @@ taxid_file: taxid_query.csv
 
 # Place to save data
 data_dir: data
-#
+
 # Known assemblies and RAST ids
 record_filename: data/known_assemblies.csv
 
 # NCBI assemblies, will be saved in data_dir
 ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt
+
+# Maximum number of in-progress analyses
+rast_maxjobs: 2
+modelseed_maxjobs: 2
 

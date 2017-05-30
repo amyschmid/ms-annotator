@@ -34,8 +34,8 @@ sub main {
   modelseed_get_results(@asmids);
 
   # Make submisions
-  rast_submit(@asmids);
-  modelseed_submit(@asmids);
+  rast_submit(\@asmids, $config->{rast_maxjobs});
+  modelseed_submit(\@asmids, $config->{modelseed_maxjobs});
 
 }
 

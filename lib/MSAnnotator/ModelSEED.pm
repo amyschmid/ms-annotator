@@ -269,6 +269,16 @@ sub modelseed_update_status {
   return \%ret;
 }
 
+sub modelseed_get_inprogress {
+  my $asmids = shift;
+  my $records = get_records(@$asmids);
+  my $ret = 0;
+  for my $asm (values(%$records)) {
+    $ret += 1 if $asm->{modelseed_status} eq 'in-progress';
+  }
+  return $ret
+}
+
 sub modelseed_submit {
   # Given list of assembly ids
   # Checks records for rast_taxids that need model reconstruction run
@@ -276,16 +286,19 @@ sub modelseed_submit {
   # NOTE:
   #   modelseed_status could already be set to failed
   #   via modelseed_update_status
-  my @asmids = @_;
-  my $records = get_records(@asmids);
+  my ($asmids, $maxjobs) = @_;
+  my $records = get_records(@$asmids);
 
   while (my ($asmid, $asm) = each %$records) {
     next if $asm->{rast_status} ne "complete" || $asm->{modelseed_jobid};
     next if $asm->{modelseed_status} eq "failed" || ! $asm->{rast_taxid};
+    my $ms_inprogress = modelseed_get_inprogress($asmids);
+    last if $ms_inprogress >= $maxjobs && $maxjobs != 0;
+
     my $rast_id = $asm->{rast_taxid};
     my $ms_name = "MS$rast_id";
     my $modelseed_jobid = modelseed_modelrecon($rast_id, $ms_name);
-    update_records({
+    my $updated_records = update_records({
       $asmid => {
         modelseed_name => $ms_name,
         modelseed_jobid => $modelseed_jobid,
