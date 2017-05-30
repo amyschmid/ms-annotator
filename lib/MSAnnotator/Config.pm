@@ -40,7 +40,7 @@ sub load_config {
   # Loop through and push ids to config
   $csv->column_names(@header);
   while (my $row = $csv->getline_hr($fh)) {
-    push @{$config->{taxid_input}}, $row->{taxid};
+    push(@{$config->{taxid_input}}, $row->{taxid});
   }
 
   close $fh;

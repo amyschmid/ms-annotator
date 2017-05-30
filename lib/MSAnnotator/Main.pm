@@ -37,17 +37,6 @@ sub main {
   rast_submit(@asmids);
   modelseed_submit(@asmids);
 
-  # TODO
-  #   Rerun script to see if modelseed_submit works
-  #   Fishish modelseed_download
-  #   Print some kind of status
-
-  ### Print status
-  ##print_status(
-  ##  $config,
-  ##  $assemblies,
-  ##  @rast_running
-
 }
 
 1;

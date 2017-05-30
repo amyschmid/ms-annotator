@@ -28,7 +28,7 @@ sub download_check {
     my $filename_new = "$filename.new";
     download_url($url, $filename_new);
     if (file_md5_hex($filename) ne file_md5_hex($filename_new)) {
-      my $basename = basename $filename;
+      my $basename = basename($filename);
       croak
         "Error - version mismatch\n  A newer version found for\n",
         "    file: $basename\n    from: $url\n",

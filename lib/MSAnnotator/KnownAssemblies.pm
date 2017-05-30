@@ -92,8 +92,8 @@ sub do_update_records {
   my (@update_cols, @update_vals);
   for my $col (@column_header) {
     if (exists $values->{$col}) {
-      push @update_cols, $col;
-      push @update_vals, $values->{$col};
+      push(@update_cols, $col);
+      push(@update_vals, $values->{$col});
     }
   }
 
@@ -155,7 +155,7 @@ sub update_records {
 
   my $records = get_records(keys %$asmids);
   for my $asmid (keys %$records) {
-    push @missing, $asmid if !exists $records->{$asmid};
+    push(@missing, $asmid) if !exists $records->{$asmid};
   }
   croak "Error: Found missing entry for:\n   " .
     join("\n  ", @missing) . "\n" if @missing;
