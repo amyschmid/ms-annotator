@@ -219,64 +219,6 @@ sub modelseed_modelrecon {
   return $ret
 }
 
-sub modelseed_get_results {
-  # Given list of assembly ids
-  # Gets modelseed_name, and downloads files
-  # Updates modelseed_result with smbl file
-  my @asmids = @_;
-  my $records = get_records(@asmids);
-  my @filetypes = (".sbml", ".cpdtbl", ".rxntbl");
-
-  while (my ($asmid, $asm) = each %$records) {
-    next if $asm->{modelseed_status} ne "complete" || $asm->{modelseed_result};
-    my $ms_name = $asm->{modelseed_name};
-    my $local_path = $asm->{local_path};
-    my $links = modelseed_downloadlinks($ms_name, \@filetypes);
-    my $ms_found = 0;
-    my $ms_result;
-
-    for my $link (@$links) {
-      next if $link eq "null" || !$link;
-      my $filename = $local_path . "/" . basename($link);
-      chmod(660, $filename) if -e $filename;
-      download_url($link, $filename);
-      $ms_result = $filename if !$ms_result;
-      $ms_result = $filename if $filename =~ /.smbl$/i;
-      $ms_found += 1;
-      chmod(440, $filename);
-    }
-
-    if ($ms_found == 0) {
-      croak "Error - Could not find any files to download for $ms_name\n";
-    }
-    update_records({$asmid => {modelseed_result => $ms_result}});
-  }
-}
-
-sub modelseed_submit {
-  # Given list of assembly ids
-  # Checks records for rast_taxids that need model reconstruction run
-  # Updates modelseed_jobid, modelseed_status,
-  # NOTE:
-  #   modelseed_status could already be set to failed
-  #   via modelseed_update_status
-  my @asmids = @_;
-  my $records = get_records(@asmids);
-
-  while (my ($asmid, $asm) = each %$records) {
-    next if $asm->{rast_status} ne "complete" || $asm->{modelseed_jobid};
-    next if $asm->{modelseed_status} eq "failed" || ! $asm->{rast_taxid};
-    my $rast_id = $asm->{rast_taxid};
-    my $ms_name = "MS$rast_id";
-    my $modelseed_jobid = modelseed_modelrecon($rast_id, $ms_name);
-    update_records({
-      $asmid => {
-        modelseed_name => $ms_name,
-        modelseed_jobid => $modelseed_jobid,
-        modelseed_status => "in-progress"}});
-  }
-}
-
 sub modelseed_update_status {
   # Given a list of keys, loads assembly_records
   # If rast is complete and no ms status:
@@ -325,6 +267,64 @@ sub modelseed_update_status {
   # Update records
   update_records(\%ret);
   return \%ret;
+}
+
+sub modelseed_submit {
+  # Given list of assembly ids
+  # Checks records for rast_taxids that need model reconstruction run
+  # Updates modelseed_jobid, modelseed_status,
+  # NOTE:
+  #   modelseed_status could already be set to failed
+  #   via modelseed_update_status
+  my @asmids = @_;
+  my $records = get_records(@asmids);
+
+  while (my ($asmid, $asm) = each %$records) {
+    next if $asm->{rast_status} ne "complete" || $asm->{modelseed_jobid};
+    next if $asm->{modelseed_status} eq "failed" || ! $asm->{rast_taxid};
+    my $rast_id = $asm->{rast_taxid};
+    my $ms_name = "MS$rast_id";
+    my $modelseed_jobid = modelseed_modelrecon($rast_id, $ms_name);
+    update_records({
+      $asmid => {
+        modelseed_name => $ms_name,
+        modelseed_jobid => $modelseed_jobid,
+        modelseed_status => "in-progress"}});
+  }
+}
+
+sub modelseed_get_results {
+  # Given list of assembly ids
+  # Gets modelseed_name, and downloads files
+  # Updates modelseed_result with smbl file
+  my @asmids = @_;
+  my $records = get_records(@asmids);
+  my @filetypes = (".sbml", ".cpdtbl", ".rxntbl");
+
+  while (my ($asmid, $asm) = each %$records) {
+    next if $asm->{modelseed_status} ne "complete" || $asm->{modelseed_result};
+    my $ms_name = $asm->{modelseed_name};
+    my $local_path = $asm->{local_path};
+    my $links = modelseed_downloadlinks($ms_name, \@filetypes);
+    my $ms_found = 0;
+    my $ms_result;
+
+    for my $link (@$links) {
+      next if $link eq "null" || !$link;
+      my $filename = $local_path . "/" . basename($link);
+      chmod(660, $filename) if -e $filename;
+      download_url($link, $filename);
+      $ms_result = $filename if !$ms_result;
+      $ms_result = $filename if $filename =~ /.smbl$/i;
+      $ms_found += 1;
+      chmod(440, $filename);
+    }
+
+    if ($ms_found == 0) {
+      croak "Error - Could not find any files to download for $ms_name\n";
+    }
+    update_records({$asmid => {modelseed_result => $ms_result}});
+  }
 }
 
 1;
