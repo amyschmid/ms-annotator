@@ -22,7 +22,7 @@ my %fatpacked;
 
 $fatpacked{"App/cpanminus.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\n".<<'APP_CPANMINUS';
   package App::cpanminus;
-  our $VERSION = "1.7042";
+  our $VERSION = "1.7043";
   
   =encoding utf8
   
@@ -1656,6 +1656,9 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
           $ENV{PERL_MB_OPT} .= " --pureperl-only";
       }
   
+      local $ENV{PERL_USE_UNSAFE_INC} = 1
+          unless exists $ENV{PERL_USE_UNSAFE_INC};
+  
       $cmd = $self->append_args($cmd, 'configure') if $depth == 0;
   
       local $self->{verbose} = $self->{verbose} || $self->{interactive};
@@ -1666,6 +1669,9 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
       my($self, $cmd, $distname, $depth) = @_;
   
       local $ENV{PERL_MM_USE_DEFAULT} = !$self->{interactive};
+  
+      local $ENV{PERL_USE_UNSAFE_INC} = 1
+          unless exists $ENV{PERL_USE_UNSAFE_INC};
   
       $cmd = $self->append_args($cmd, 'build') if $depth == 0;
   
@@ -1691,6 +1697,9 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
   
       $cmd = $self->append_args($cmd, 'test') if $depth == 0;
   
+      local $ENV{PERL_USE_UNSAFE_INC} = 1
+          unless exists $ENV{PERL_USE_UNSAFE_INC};
+  
       return 1 if $self->run_timeout($cmd, $self->{test_timeout});
       if ($self->{force}) {
           $self->diag_fail("Testing $distname failed but installing it anyway.");
@@ -1714,6 +1723,9 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
       if ($depth == 0 && $self->{test_only}) {
           return 1;
       }
+  
+      local $ENV{PERL_USE_UNSAFE_INC} = 1
+          unless exists $ENV{PERL_USE_UNSAFE_INC};
   
       if ($self->{sudo}) {
           unshift @$cmd, "sudo";
@@ -3062,9 +3074,21 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
   sub bundle_deps {
       my($self, $dist) = @_;
   
+      my $match;
+      if ($dist->{module}) {
+          $match = sub {
+              my $meta = Module::Metadata->new_from_file($_[0]);
+              $meta && ($meta->name eq $dist->{module});
+          };
+      } else {
+          $match = sub { 1 };
+      }
+  
       my @files;
       File::Find::find({
-          wanted => sub { push @files, File::Spec->rel2abs($_) if /\.pm/i },
+          wanted => sub {
+              push @files, File::Spec->rel2abs($_) if /\.pm$/i && $match->($_);
+          },
           no_chdir => 1,
       }, '.');
   
@@ -3287,7 +3311,7 @@ $fatpacked{"App/cpanminus/script.pm"} = '#line '.(1+__LINE__).' "'.__FILE__."\"\
       my $source_mtime = (stat $file)[9];
   
       # Don't mirror a file that's already there (like the index)
-      return if -e $path && (stat $path)[9] >= $source_mtime;
+      return 1 if -e $path && (stat $path)[9] >= $source_mtime;
   
       File::Copy::copy($file, $path);
   

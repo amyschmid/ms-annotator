@@ -100,13 +100,15 @@ Documenting result of run
 ## Output 
 
 ```
-assembly_id
-  ├MS[rast_id].smbl         - ModelSEED derived metabolic model
-  ├RAST[rast_id].gbff       - RAST annotated genbank file
-  ├RAST[rast_id].smbl       - Metobolic model
-  ├NCBI                     - Relevant NCBI data
-     ├assembly_report.txt   - 
-     ├assembly_stats.txt
-     ├genomic.gbff.gz
+data/<asmid>
+|-- NCBI
+|   |-- <asmid>_assembly_report.txt
+|   |-- <asmid>_assembly_stats.txt
+|   |-- <asmid>_genomic.fna.gz
+|   |-- <asmid>_genomic.gbff.gz
+|   `-- <asmid>_genomic.gff.gz
+|-- <asmid>_genomic.gbff
+|-- RAST<rast_taxid>.gbff
+`-- MS<rast_taxid>.sbml
 ```
 

@@ -1,9 +1,8 @@
 package MSAnnotator::RAST;
-require Exporter;
-use YAML 'LoadFile';
 use File::Basename;
 use Parallel::ForkManager;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
+use YAML 'LoadFile';
 use RASTserver;
 
 # Load custom modules
@@ -11,6 +10,7 @@ use MSAnnotator::Base;
 use MSAnnotator::KnownAssemblies qw(update_records get_records);
 
 # Export functions
+require Exporter;
 our @ISA = 'Exporter';
 our @EXPORT_OK = qw(rast_update_status rast_get_results rast_submit);
 
@@ -96,7 +96,7 @@ sub prepare_genbankfile {
 sub rast_get_inprogress {
   my $asmids = shift;
   my $records = get_records(@$asmids);
-  my $ret;
+  my $ret = 0;
   for my $asm (values %$records) {
     $ret += 1 if $asm->{rast_status} eq "in-progress";
   }

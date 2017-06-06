@@ -16,4 +16,5 @@ ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly
 # Maximum number of in-progress analyses
 rast_maxjobs: 2
 modelseed_maxjobs: 2
+sleeptime: 60
 
