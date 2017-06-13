@@ -105,7 +105,7 @@ sub main {
     print_status(status => $status, print_header => 0);
   }
 
-  print "All jobs completed!"
+  say "All jobs completed!";
 }
 
 1;
