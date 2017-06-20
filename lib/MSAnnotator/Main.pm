@@ -32,8 +32,8 @@ sub get_status {
   for my $asm (values %$records) {
     $res{ms_complete} += 1 if $asm->{modelseed_result};
     $res{rast_complete} += 1 if $asm->{rast_result};
-    $res{running} += 1 if $asm->{rast_status} eq "in-progress";
-    $res{running} += 1 if $asm->{modelseed_status} eq "in-progress";
+    $res{running} += 1 if $asm->{rast_status} eq "running";
+    $res{running} += 1 if $asm->{modelseed_status} eq "running";
     $res{failed} += 1 if $asm->{rast_status} eq "failed";
     $res{failed} += 1 if $asm->{modelseed_status} eq "failed";
     $res{pending} += 1 if !$asm->{rast_status};

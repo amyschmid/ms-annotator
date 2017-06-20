@@ -224,7 +224,7 @@ sub modelseed_update_status {
   # If rast is complete and no ms status:
   #    checks that rast_jobid can befound via modelseed_checkrast
   #    Will fail without a modelseed_jobid if no genome is found
-  # If modelseed_status is in-progress
+  # If modelseed_status is running
   #    checks if there job has completed or failed
   # Also will update rast_taxid for any valid completed rast_jobids
   my @input_asmids = @_;
@@ -254,8 +254,8 @@ sub modelseed_update_status {
         }
       }
     } else {
-      next if $asm{modelseed_status} ne 'in-progress';
-      # Have an in-progress modelseed_jobid
+      next if $asm{modelseed_status} ne 'running';
+      # Have an running modelseed_jobid
       if ($msjobs->{$msid}->{status} eq 'completed') {
         $ret{$asmid}{modelseed_status} = "complete";
       } elsif ($msjobs->{$msid}->{status} eq 'failed') {
@@ -274,7 +274,7 @@ sub modelseed_get_inprogress {
   my $records = get_records(@$asmids);
   my $ret = 0;
   for my $asm (values(%$records)) {
-    $ret += 1 if $asm->{modelseed_status} eq 'in-progress';
+    $ret += 1 if $asm->{modelseed_status} eq 'running';
   }
   return $ret
 }
@@ -302,7 +302,7 @@ sub modelseed_submit {
       $asmid => {
         modelseed_name => $ms_name,
         modelseed_jobid => $modelseed_jobid,
-        modelseed_status => "in-progress"}});
+        modelseed_status => "running"}});
   }
 }
 
@@ -325,12 +325,12 @@ sub modelseed_get_results {
     for my $link (@$links) {
       next if $link eq "null" || !$link;
       my $filename = $local_path . "/" . basename($link);
-      chmod(660, $filename) if -e $filename;
+      chmod(0660, $filename) if -e $filename;
       download_url($link, $filename);
       $ms_result = $filename if !$ms_result;
       $ms_result = $filename if $filename =~ /.smbl$/i;
       $ms_found += 1;
-      chmod(440, $filename);
+      chmod(0440, $filename);
     }
 
     if ($ms_found == 0) {

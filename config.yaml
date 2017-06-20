@@ -14,8 +14,8 @@ record_filename: data/known_assemblies.csv
 ncbi_assemblies_url: ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/archaea/assembly_summary.txt
 
 # Maximum number of in-progress analyses
-rast_maxjobs: 5
-modelseed_maxjobs: 5
+rast_maxjobs: 10
+modelseed_maxjobs: 10
 
 # Time to pause between iterations
 sleeptime: 300

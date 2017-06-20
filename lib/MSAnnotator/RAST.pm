@@ -37,7 +37,7 @@ sub rast_update_status {
   my @checkids;
   for my $asmid (keys %$records) {
     my %asm = %{$records->{$asmid}};
-    if ($asm{rast_jobid} && $asm{rast_status} eq 'in-progress') {
+    if ($asm{rast_jobid} && $asm{rast_status} eq 'running') {
       push(@checkids, $asmid);
     }
   }
@@ -61,7 +61,7 @@ sub rast_update_status {
     if ($status eq "complete") {
       $ret{$asmid} = {rast_status => "complete"};
     } elsif ($status eq "running" || $status eq "not_started") {
-      $ret{$asmid} = {rast_status => "in-progress"};
+      $ret{$asmid} = {rast_status => "running"};
     } else {
       $ret{$asmid} = {rast_status => "failed"};
     }
@@ -98,7 +98,7 @@ sub rast_get_inprogress {
   my $records = get_records(@$asmids);
   my $ret = 0;
   for my $asm (values %$records) {
-    $ret += 1 if $asm->{rast_status} eq "in-progress";
+    $ret += 1 if $asm->{rast_status} eq "running";
   }
   return $ret;
 }
@@ -164,7 +164,7 @@ sub rast_submit {
       my %rast_update = (
         $asmid => {
           rast_jobid => $res->{job_id},
-          rast_status => 'in-progress',
+          rast_status => 'running',
           rast_taxid => ''});
       update_records(\%rast_update);
     } else {
