@@ -1,28 +1,21 @@
 #!/bin/bash
 # This is simple wrapper to use cpanminus and local::lib to manage
 # a virtual perl environment, see: http://stackoverflow.com/a/2980715
-# TODO install external libs via git submodule
 set -eo pipefail
 
 # Root directory to find external libraries
+venv_dir="../venv"
 incdir="../include"
 
 # External libaries to append to PERL5LIB
-external_libs=(
-	$incdir/ProbModelSEED/lib
-	$incdir/PATRICClient/lib
-	$incdir/MSSeedSupportServer/lib
-	$incdir/Workspace/lib
-	$incdir/KBaseClient/lib
-  $incdir/SEED-API/lib)
+external_libs=($incdir/SEED-API/lib)
 
 # Requested location of venv
-venv_dir="../venv"
 venv_dir="$(readlink -f $venv_dir)"
 
-## Get cpanminus and install local lib
-#unset PERL5LIB PERL_MM_OPT PERL_MB_OPT
-#/usr/bin/perl <(wget -O- http://cpanmin.us) --local-lib "$venv_dir" "App::cpanminus" "local::lib"
+# Get cpanminus and install local lib
+unset PERL5LIB PERL_MM_OPT PERL_MB_OPT
+/usr/bin/perl <(wget -O- http://cpanmin.us) --local-lib "$venv_dir" "App::cpanminus" "local::lib"
 
 # Get PERL5LIB string
 unset plib
