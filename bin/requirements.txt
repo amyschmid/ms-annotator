@@ -1,0 +1,14 @@
+App::cpanminus
+local::lib
+DBD::CSV
+DBI
+Digest::MD5::File
+HTTP::Request::Common
+JSON
+LWP::UserAgent
+Parallel::ForkManager
+Text::CSV
+Text::CSV_XS
+Text::Table
+YAML::XS
+YAML
