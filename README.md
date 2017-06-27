@@ -22,13 +22,13 @@ cd ms-annotator
 ```
 
 ## Running
-Once requirements are inplace, `ms-annotator` can be run by invoking
+Once requirements are in place, `ms-annotator` can be run by invoking
 muliplexer such as `screen` or `tmux`.
 ```
 ./ms-annotator.sh
 ```
 The program will run until all assemblies are annotated or until an error occurs.
-While the program runs, it will report periotic status updates, these are logged
+While the program runs, it will report periodic status updates, these are logged
 to the file `progress.log`. The progress of an analysis can also be viewed
 via the `known_assemblies.csv` file, described [here](#kown-assemblies).
 `ms-annotator` is designed to be robust to restarts, and will attempt to pick
@@ -38,11 +38,11 @@ Because of the potentially long runtime, it is recommended that you run
 ms-annotator in a terminal multiplexer such as 
 [tmux](http://www.hamvocke.com/blog/a-quick-and-easy-guide-to-tmux/) or
 [screen](https://www.computerhope.com/unix/screen.htm).
-Doing so will ensure `ms-annotator` will remain persistant through connection
+Doing so will ensure `ms-annotator` will remain persistent through connection
 disruptions and allow for resuming after closing the terminal.
 
 ## Requirements
-The following files are requred to run `ms-annotator`
+The following files are required to run `ms-annotator`
 
 ### Main configuration file
 `config.yaml`:
@@ -71,10 +71,10 @@ chmod 440 credentials.yaml
 A comma-separated file containing two columns `taxid` and `species`.
 This file is specified by the `taxid_file` parameter in the configuration file
 and contains the NCBI taxon IDs of species to query. `species` column will not 
-be used durreing the analysis. 
+be used during the analysis. 
 
 # Output and Results
-All output is saved to the locaiton specified by `data_dir` in the main configuration file.  
+All output is saved to the location specified by `data_dir` in the main configuration file.  
 This directory will be structured as follows:
 ```
 data/
@@ -98,12 +98,12 @@ data/
 This file is used to keep track of the currently state of the workflow and
 is used to determine what tasks are needed to run. This allow the 
 program to be robust to restarts and reruns. As such, this file should not
-be written to or eddited as doing so could corupt the workflow.
+be written to or edited as doing so could corrupt the workflow.
 In addition to the status of the workflow, this file also contains some helpful
 columns derived from the `assembly_summary.txt` file. See [references](#references).
 
-file contains the following:  
-| Feild            | Description                                                          |
+`record_filename` file contains the following:  
+| Field            | Description                                                          |
 |------------------|----------------------------------------------------------------------|
 | asmid            | NCBI assembly ID                                                     |
 | rast_jobid       | RAST submission ID, unique per submission                            |
@@ -123,48 +123,55 @@ file contains the following:
 | local_path       | Local location of where resulting data will be saved                 |
 | ftp_path         | Remote location where the data originated                            |
 
-## Handeling Failures
+## Handling Failures
 Generally, there are two points at which an assembly could fail:
 1. While trying to contact RAST or ModelSEED (for submission or otherwise)
-2. Durring the analysis being conducted by RAST or ModelSEED
+2. During the analysis being conducted by RAST or ModelSEED
 
 Failures of the first kind potentially indicate a systematic issue and will
-cause the pipline to stop and issue an error.
+cause the pipeline to stop and issue an error.
 
 Failures of the second kind are recorded in the `rast_result` or 
-`modelseed_result` fields of the `progress_file` file. When encounted, these
+`modelseed_result` fields of the `progress_file` file. When encountered, these
 fields will be labeled as `failed` and the associated `assembly` will be ignored.
 
 # Data sources
 All information regarding taxon ids, annotations, and assemblies are sourced
 from the NCBI's `assembly_summary.txt` report.
 
-## Detailed Strategy
+# Detailed Strategy
 1. User supplied taxids are read
-2. All assemblies associated with the main taxon are determined
-  * Download `asmid` from NCBI is not present in `known_assemblies`
-2. If `rast_jobid` is not present
+  * Assemblies associated with the main taxon are determined
+  * New assemblies are downloaded from NCBI if not present in `known_assemblies`
+
+2. For assemblies with `rast_status` and `modelseed_status` with a value of `running`
+  * Check status of server-side jobs
+      * For failed jobs, set `rast_status` or `modelseed_status` to `failed`
+      * For completed jobs, set `rast_status` or `modelseed_status` to `complete` 
+        * Download resulting files
+        * Record location in `rast_result` or `modelseed_result`
+
+3. For assemblies without a value for `rast_status`
   * Ensure `max_rast_jobs` has not been exceeded
+  * Extract Genbank file
   * Submit to RAST and record `rast_jobid`
-3. If `rast_jobid` exists:
-  * If the RAST job completed if sucessfully:
-    * The resulting genbank file is downloaded to `rast_result`
-    * Otherwise, `rast_result` is marked as `failed`
-4. If `rast_taxid` exists:
-  * Ensure `rast_taxid` is known to ModelSEED
-  * Check that no more than `max_modelseed_jobs` has not been exceeded
-  * Submit to modelseed and record `modelseed_id` or mark as `failed`
-5. If `modelseed_id` exists:
-  * Check status of job and determine download locations
-  * Download files and record location `modelseed_result` or mark as `failed`  
+  * Set `rast_status` to `running`
+
+4. For assemblies without a value for `modelseed_status`
+  * Ensure `max_modelseed_jobs` has not been exceeded
+  * Ensure ModelSEED can see RAST annotated genome
+  * Submit job to ModelSEED and record `modelseed_jobid`
+  * Set `modelseed_status` to `running`
+
+5. If either `rast_status` or `modelseed_status` is `running` proceed to step 2.
 
 # Limitations
 Presently, `ms-annotator` has the following limitations:
 * NCBI's Genbank repository updates frequently, no method has been implemented to capture potential differences
 * RAST is always instructed to preserve existing gene calls. However, if there are no genes present in the Genbank file, RAST will fail
-* Multiple instances are not supported, as they will potentially corupt the workflow.
+* Multiple instances are not supported, as they will potentially corrupt the workflow.
 * There is no way to use multiple taxid query files or configuration files.
-* While new taxids can be added to an analysis, there is no mehtod for removing assemblies from an existing analysis.
+* While new taxids can be added to an analysis, there is no method for removing assemblies from an existing analysis.
 
 # Resources
 [NCBI search taxids](https://www.ncbi.nlm.nih.gov/taxonomy)
@@ -173,6 +180,6 @@ Presently, `ms-annotator` has the following limitations:
 [RAST service homepage](http://rast.nmpdr.org/rast.cgi?page=Jobs)
 [ModelSEED service homepage](http://modelseed.org/my-models/)
 
-## Suppport 
+## Support 
 RAST: rast@mcs.anl.gov
 ModelSEED: chrisshenry@gmail.com
