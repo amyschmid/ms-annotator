@@ -3,7 +3,7 @@ package SQL::Parser;
 ######################################################################
 #
 # This module is copyright (c), 2001,2005 by Jeff Zucker.
-# This module is copyright (c), 2007-2016 by Jens Rehsack.
+# This module is copyright (c), 2007-2017 by Jens Rehsack.
 # All rights reserved.
 #
 # It may be freely distributed under the same terms as Perl itself.
@@ -22,7 +22,7 @@ use Params::Util qw(_ARRAY0 _ARRAY _HASH);
 use Scalar::Util qw(looks_like_number);
 use Text::Balanced qw(extract_bracketed);
 
-$VERSION = '1.410';
+$VERSION = '1.412';
 
 BEGIN
 {
@@ -60,6 +60,7 @@ sub parse
     $self->dialect( $self->{dialect} ) unless ( $self->{dialect_set} );
     $sql =~ s/^\s+//;
     $sql =~ s/\s+$//;
+    $sql =~ s/\s*;$//;
     $self->{struct}                    = { dialect => $self->{dialect} };
     $self->{tmp}                       = {};
     $self->{original_string}           = $sql;
@@ -618,11 +619,7 @@ sub EXPLICIT_JOIN
             $tableB = $1;
             my $keycolstr = $2;
             $remainder = $3;
-            if ( $keycolstr =~ m/ OR /i )
-            {
-                return $self->do_err( qq{Can't use OR in an ON clause!}, 1 );
-            }
-            @$keycols = split / AND /i, $keycolstr;
+            @$keycols = split(/ AND|OR /i, $keycolstr);
 
             return undef
               unless $self->TABLE_NAME_LIST( $tableA . ',' . $tableB );
@@ -632,7 +629,8 @@ sub EXPLICIT_JOIN
             for my $keycol (@$keycols)
             {
                 my %is_done;
-                my ( $arg1, $arg2 ) = split( m/ = /, $keycol );
+		$keycol =~ s/\)|\(//g;
+                my ( $arg1, $arg2 ) = split( m/ [>=<] /, $keycol );
                 my ( $c1, $c2 ) = ( $arg1, $arg2 );
                 $c1 =~ s/^.*\.([^\.]+)$/$1/;
                 $c2 =~ s/^.*\.([^\.]+)$/$1/;
@@ -1112,11 +1110,11 @@ sub CREATE
         # it seems, perl 5.6 isn't greedy enough .. let's help a bit
         my ($data_types_regex) = join( '|', sort { length($b) <=> length($a) } keys %{ $self->{opts}->{valid_data_types} } );
         $data_types_regex =~ s/ /\\ /g;    # backslash spaces to allow the /x modifier below
-        my ( $name, $type, $constraints ) = (
+        my ( $name, $type, $suffix ) = (
             $col =~ m/\s*(\S+)\s+                         # capture the column name
                         ((?:$data_types_regex|\S+)        # check for all allowed data types OR anything that looks like a bad data type to give a good error
                         (?:\s*\(\d+(?:\?COMMA\?\d+)?\))?) # allow the data type to have a precision specifier such as NUMERIC(4,6) on it
-                        \s*(\W.*|$)                       # capture the constraints if any
+                        \s*(\W.*|$)                       # capture the suffix of the column definition, e.g. constraints
                      /ix
         );
         return $self->do_err("Column definition is missing a data type!") unless ($type);
@@ -1124,37 +1122,27 @@ sub CREATE
 
         $name = $self->replace_quoted_ids($name);
 
-        $constraints =~ s/^\s+//;
-        $constraints =~ s/\s+$//;
-        if ($constraints)
-        {
-            $constraints =~ s/PRIMARY KEY/PRIMARY_KEY/i;
-            $constraints =~ s/NOT NULL/NOT_NULL/i;
-            my @c = split m/\s+/, $constraints;
-            my %has_c;
-            for my $constr (@c)
-            {
-                if ( $constr =~ m/^\s*(UNIQUE|NOT_NULL|PRIMARY_KEY)\s*$/i )
-                {
-                    my $cur_c = uc $1;
-                    if ( $has_c{$cur_c}++ )
-                    {
-                        return $self->do_err(qq~Duplicate column constraint: '$constr'!~);
-                    }
-                    if ( $cur_c eq 'PRIMARY_KEY' and $primary_defined++ )
-                    {
-                        return $self->do_err(qq{Can't have two PRIMARY KEYs in a table!});
-                    }
-                    $constr =~ s/_/ /g;
-                    push @{ $self->{struct}->{table_defs}->{columns}->{$name}->{constraints} }, $constr;
+        my @possible_constraints = ('PRIMARY KEY', 'NOT NULL', 'UNIQUE');
 
-                }
-                else
-                {
-                    return $self->do_err("Unknown column constraint: '$constr'!");
-                }
-            }
+        for my $constraint (@possible_constraints)
+        {
+            my $count = $suffix =~ s/$constraint//gi;
+            next if $count == 0;
+
+            return $self->do_err(qq~Duplicate column constraint: '$constraint'!~)
+                if $count > 1;
+
+            return $self->do_err(qq{Can't have two PRIMARY KEYs in a table!})
+                if $constraint eq 'PRIMARY KEY' and $primary_defined++;
+
+            push @{ $self->{struct}->{table_defs}->{columns}->{$name}->{constraints} }, $constraint;
         }
+
+        $suffix =~ s/^\s+//;
+        $suffix =~ s/\s+$//;
+
+        return $self->do_err("Unknown column constraint: '$suffix'!") unless ($suffix eq '');
+
         $type = uc $type;
         my $length;
         if ( $type =~ m/(.+)\((.+)\)/ )
@@ -1468,8 +1456,17 @@ sub LIMIT_CLAUSE
     $limit_clause =~ s/\s+$//;
 
     return 1 if !$limit_clause;
-    my ( $offset, $limit, $junk ) = split /,/, $limit_clause;
-    return $self->do_err('Bad limit clause!')
+    my $offset;
+    my $limit;
+    my $junk;
+($offset, $limit, $junk ) = split /,|OFFSET/i, $limit_clause;
+    if ($limit_clause =~ m/(\d+)\s+OFFSET\s+(\d+)/) {
+	$limit = $1;
+	$offset = $2;
+    } else {
+	( $offset, $limit, $junk ) = split /,/i, $limit_clause;
+    }
+    return $self->do_err('Bad limit clause!:'.$limit_clause)
       if ( defined $limit and $limit =~ /[^\d]/ )
       or ( defined $offset and $offset =~ /[^\d]/ )
       or defined $junk;
@@ -2717,11 +2714,16 @@ sub IDENTIFIER
     {
         return 1;
     }
+    if ( $id =~ m/^[`](.+)[`]$/ )
+    {
+        $id = $1 and return 1;
+    }
     if ( $id =~ m/^(.+)\.([^\.]+)$/ )
     {
         my $schema = $1;    # ignored
         $id = $2;
     }
+    $id =~ s/\(|\)//g;
     return 1 if $id =~ m/^".+?"$/s;    # QUOTED IDENTIFIER
     my $err = "Bad table or column name: '$id' ";    # BAD CHARS
     if ( $id =~ /\W/ )
@@ -3433,7 +3435,7 @@ package.
  This module is
 
  copyright (c) 2001,2005 by Jeff Zucker and
- copyright (c) 2007-2016 by Jens Rehsack.
+ copyright (c) 2007-2017 by Jens Rehsack.
 
  All rights reserved.
 

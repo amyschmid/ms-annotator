@@ -2,7 +2,7 @@ package SQL::Statement::Function;
 
 ######################################################################
 #
-# This module is copyright (c), 2009-2016 by Jens Rehsack.
+# This module is copyright (c), 2009-2017 by Jens Rehsack.
 # All rights reserved.
 #
 # It may be freely distributed under the same terms as Perl itself.
@@ -17,7 +17,7 @@ use vars qw(@ISA $VERSION);
 use SQL::Statement::Term ();
 @ISA = qw(SQL::Statement::Term);
 
-$VERSION = '1.410';
+$VERSION = '1.412';
 
 =pod
 
@@ -218,14 +218,14 @@ sub new
 sub value($)
 {
     my ( $self, $eval ) = @_;
-    my $expr = $self->{EXPR};
     my @vals =
       map { _INSTANCE( $_, 'SQL::Statement::Term' ) ? $_->value($eval) : $_ } @{ $self->{PARAMS} };
     foreach my $val (@vals)
     {
-        return $self->do_err(qq~Bad numeric expression '$val'!~)
+        return $self->{OWNER}->do_err(qq~Bad numeric expression '$val'!~)
           unless ( defined( _NUMBER($val) ) );
     }
+    my $expr = $self->{EXPR};
     $expr =~ s/\?(\d+)\?/$vals[$1]/g;
     $expr =~ s/\s//g;
     $expr =~ s/^([\)\(+\-\*\/\%0-9]+)$/$1/;    # untaint
@@ -479,7 +479,7 @@ sub value($)
 
 =head1 AUTHOR AND COPYRIGHT
 
-Copyright (c) 2009-2016 by Jens Rehsack: rehsackATcpan.org
+Copyright (c) 2009-2017 by Jens Rehsack: rehsackATcpan.org
 
 All rights reserved.
 
