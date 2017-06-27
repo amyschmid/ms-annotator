@@ -14,6 +14,14 @@ external_libs=($include_dir/SEED/lib)
 # Requested location of venv
 venv_dir="$(readlink -f $venv_dir)"
 
+# Download SEED API if needed
+if [ ! -e $include_dir/SEED/lib/RASTserver.pm ]; then
+  if [ ! -e $include_dir/SEED/FigKernelPackages/RASTserver.pm ]; then
+    ./downlaod_seed.sh $include_dir/SEED FigKernelPackages
+  fi
+  ln -s FigKernelPackages $include_dir/SEED/lib
+fi
+
 # Get cpanminus and install local lib
 depstr="$(cat $depfile | tr "\n" " ")"
 depstr="${depstr% }"

@@ -31,18 +31,20 @@ get_urls() {
 
   if [ ! -e $html_file ]; then
     wget --no-verbose -O $html_file $cvs_url/viewcvs.cgi/$1
+    # grep -v exits with non-zero when nothing is reported
+    set +e
     grep "href.*viewcvs.cgi/$1" "$html_file" \
       | sed -r 's/.*href="([^"]+).*/\1/g' \
       | sed -r 's/\?.*//g' \
       | sort -u \
       | grep -v "$cvs_dir/viewcvs.cgi/$1/$"
+    set -e
   fi
 }
 
 process_dir() {
   # Download root directory sturcture
-  dir_links=($(get_urls $1))
-  n=$(( $n + 1 ))
+  dir_links=("$(get_urls $1)")
 
   # First slurp up all files
   for link in ${dir_links[@]}; do
@@ -101,7 +103,5 @@ rm -r "$prefix_dir/temp"
 
 echo "Sucessfully complete!"
 echo "Downloaded $file_count files and $dir_count directories"
-
-
 
 
