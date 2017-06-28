@@ -27,7 +27,7 @@ are in place, start the workflow by running:
 The program will run until all assemblies are annotated or until an error occurs.
 While the program runs, it will report periodic status updates, these are logged
 to the file `progress.log`. The progress of an analysis can also be viewed
-via the `known_assemblies.csv` file, described [here](#progress-file).
+via the `record_filename` file, described [here](#progress-file).
 These scripts are designed to be robust to restarts, and will pick
 up where it left off.
 
@@ -109,7 +109,8 @@ be written to or edited as doing so could corrupt the workflow.
 In addition to the status of the workflow, this file also contains some helpful
 columns derived from the `assembly_summary.txt` file. See [resources](#resources).  
 
-`record_filename` file contains the following columns:  
+`record_filename` file contains the following columns:
+
 | Field            | Description                                                          |
 |------------------|----------------------------------------------------------------------|
 | asmid            | NCBI assembly ID                                                     |
@@ -145,7 +146,7 @@ fields will be labeled as `failed` and the associated `assembly` will be ignored
 # Detailed Strategy
 1. User supplied taxids are read
   * Assemblies associated with the main taxon are determined
-  * New assemblies are downloaded from NCBI if not present in `known_assemblies`
+  * New assemblies are downloaded from NCBI if not present in `record_filename`
 
 2. For assemblies with `rast_status` and `modelseed_status` with a value of `running`
   * Check status of server-side jobs
