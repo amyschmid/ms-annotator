@@ -12,21 +12,18 @@ scripts will:
 * Archive the resulting metabolic model
 
 # Usage
-## Installing
-The following commands will clone the latest version of the software
-and via the setup script install all perl / api dependences.
+Use the following command to clone the repository:
 ```
 git clone git@gitlab.oit.duke.edu:schmidlab/ms-annotator.git
-cd ms-annotator
-./bin/setup.sh
 ```
 
 ## Running
-Once requirements are in place, `ms-annotator` can be run by invoking
-muliplexer such as `screen` or `tmux`.
+Once cloned into a directory and all [required files](#requirements)
+are in place, start the workflow by running:
 ```
 ./ms-annotator.sh
 ```
+
 The program will run until all assemblies are annotated or until an error occurs.
 While the program runs, it will report periodic status updates, these are logged
 to the file `progress.log`. The progress of an analysis can also be viewed
@@ -34,7 +31,15 @@ via the `known_assemblies.csv` file, described [here](#progress-file).
 These scripts are designed to be robust to restarts, and will pick
 up where it left off.
 
-#### Recomendation
+## Installing dependences 
+Although the git repository contains all needed dependencies, 
+these can be reinstalled by running the setup script from the bin directory.
+```
+cd bin
+./setup.sh
+```
+
+#### Recommendation
 Because of the potentially long runtime, it is recommended that you run 
 ms-annotator in a terminal multiplexer such as 
 [tmux](http://www.hamvocke.com/blog/a-quick-and-easy-guide-to-tmux/) or
@@ -114,7 +119,7 @@ columns derived from the `assembly_summary.txt` file. See [resources](#resources
 | rast_result      | RAST annotated Genbank file                                          |
 | modelseed_jobid  | ModelSEED submission ID, unique per submission                       |
 | modelseed_status | ModelSEED status of started job (`running`, `complete`, or `failed`) |
-| modelseed_name   | Name of metabolic model, will be "MS`<rast_taxid>`"                  |
+| modelseed_name   | Name of metabolic model, will be "MS`rast_taxid`"                    |
 | modelseed_result | Location of ModelSEED generated smbl file or "failed"                |
 | organism_name    | NCBI Organism name                                                   |
 | taxid            | NCBI taxid                                                           |
@@ -173,7 +178,7 @@ Presently, `ms-annotator` has the following limitations:
 
 # Resources
 [NCBI search taxids](https://www.ncbi.nlm.nih.gov/taxonomy)  
-[NCBI description of `assembly_summary.txt` file](ftp://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt)  
+[NCBI description of assembly_summary.txt file](ftp://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt)  
 [NCBI genbank data-types](ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt)  
 [RAST service homepage](http://rast.nmpdr.org/rast.cgi?page=Jobs)  
 [ModelSEED service homepage](http://modelseed.org/my-models/)  
