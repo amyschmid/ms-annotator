@@ -16,7 +16,7 @@ scripts will:
 The following commands will clone the latest version of the software
 and via the setup script install all perl / api dependences.
 ```
-git clone XXX
+git clone git@gitlab.oit.duke.edu:schmidlab/ms-annotator.git
 cd ms-annotator
 ./bin/setup.sh
 ```
@@ -30,10 +30,11 @@ muliplexer such as `screen` or `tmux`.
 The program will run until all assemblies are annotated or until an error occurs.
 While the program runs, it will report periodic status updates, these are logged
 to the file `progress.log`. The progress of an analysis can also be viewed
-via the `known_assemblies.csv` file, described [here](#kown-assemblies).
-`ms-annotator` is designed to be robust to restarts, and will attempt to pick
+via the `known_assemblies.csv` file, described [here](#progress-file).
+These scripts are designed to be robust to restarts, and will pick
 up where it left off.
 
+#### Recomendation
 Because of the potentially long runtime, it is recommended that you run 
 ms-annotator in a terminal multiplexer such as 
 [tmux](http://www.hamvocke.com/blog/a-quick-and-easy-guide-to-tmux/) or
@@ -42,7 +43,7 @@ Doing so will ensure `ms-annotator` will remain persistent through connection
 disruptions and allow for resuming after closing the terminal.
 
 ## Requirements
-The following files are required to run `ms-annotator`
+The following files are required
 
 ### Main configuration file
 `config.yaml`:
@@ -74,6 +75,7 @@ and contains the NCBI taxon IDs of species to query. `species` column will not
 be used during the analysis. 
 
 # Output and Results
+## Results
 All output is saved to the location specified by `data_dir` in the main configuration file.  
 This directory will be structured as follows:
 ```
@@ -100,9 +102,9 @@ is used to determine what tasks are needed to run. This allow the
 program to be robust to restarts and reruns. As such, this file should not
 be written to or edited as doing so could corrupt the workflow.
 In addition to the status of the workflow, this file also contains some helpful
-columns derived from the `assembly_summary.txt` file. See [references](#references).
+columns derived from the `assembly_summary.txt` file. See [resources](#resources).  
 
-`record_filename` file contains the following:  
+`record_filename` file contains the following columns:  
 | Field            | Description                                                          |
 |------------------|----------------------------------------------------------------------|
 | asmid            | NCBI assembly ID                                                     |
@@ -134,10 +136,6 @@ cause the pipeline to stop and issue an error.
 Failures of the second kind are recorded in the `rast_result` or 
 `modelseed_result` fields of the `progress_file` file. When encountered, these
 fields will be labeled as `failed` and the associated `assembly` will be ignored.
-
-# Data sources
-All information regarding taxon ids, annotations, and assemblies are sourced
-from the NCBI's `assembly_summary.txt` report.
 
 # Detailed Strategy
 1. User supplied taxids are read
@@ -174,12 +172,12 @@ Presently, `ms-annotator` has the following limitations:
 * While new taxids can be added to an analysis, there is no method for removing assemblies from an existing analysis.
 
 # Resources
-[NCBI search taxids](https://www.ncbi.nlm.nih.gov/taxonomy)
-[NCBI description of `assembly_summary.txt` file](ftp://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt)
-[NCBI genbank data-types](ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt)
-[RAST service homepage](http://rast.nmpdr.org/rast.cgi?page=Jobs)
-[ModelSEED service homepage](http://modelseed.org/my-models/)
+[NCBI search taxids](https://www.ncbi.nlm.nih.gov/taxonomy)  
+[NCBI description of `assembly_summary.txt` file](ftp://ftp.ncbi.nlm.nih.gov/genomes/README_assembly_summary.txt)  
+[NCBI genbank data-types](ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/README.txt)  
+[RAST service homepage](http://rast.nmpdr.org/rast.cgi?page=Jobs)  
+[ModelSEED service homepage](http://modelseed.org/my-models/)  
 
 ## Support 
-RAST: rast@mcs.anl.gov
-ModelSEED: chrisshenry@gmail.com
+RAST: rast@mcs.anl.gov  
+ModelSEED: chrisshenry@gmail.com  
